@@ -54,8 +54,8 @@ export async function buildZip(kv: Deno.Kv): Promise<CachedBundle> {
 
   const enc = new TextEncoder();
   const raw = zipSync({
-    "cached-microdesc-consensus": [enc.encode(consensus), { level: 0 }],
-    "cached-microdescs.new": [enc.encode(microdescs), { level: 0 }],
+    [`tor-bootstrap-data/consensus.txt`]: [enc.encode(consensus), { level: 0 }],
+    "tor-bootstrap-data/microdescs.txt": [enc.encode(microdescs), { level: 0 }],
   });
 
   console.log("Compressing...");

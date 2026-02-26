@@ -30,7 +30,7 @@ const handler = async (req: Request) => {
     }
     const headers: Record<string, string> = {
       "Content-Type": "application/zip",
-      "Content-Disposition": 'attachment; filename="tor-bootstrap.zip"',
+      "Content-Disposition": 'attachment; filename="tor-bootstrap-data.zip"',
       "Content-Length": String(body.byteLength),
     };
     if (encoding) {
