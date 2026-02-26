@@ -1,4 +1,6 @@
 export const AUTHORITIES = [
+  { host: "193.23.244.244", port: 80, name: "dannenberg" },
+  { host: "131.188.40.189", port: 80, name: "gabelmoo" },
   { host: "204.13.164.118", port: 80, name: "bastet" },
   { host: "199.58.81.140", port: 80, name: "longclaw" },
   { host: "171.25.193.9", port: 443, name: "maatuska" },
