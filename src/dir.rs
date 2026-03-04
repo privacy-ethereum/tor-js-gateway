@@ -15,6 +15,7 @@ use arti_client::TorClient;
 pub async fn get(
     client: &TorClient<tor_rtcompat::PreferredRuntime>,
     path: &str,
+    diff_from: Option<&str>,
 ) -> Result<Vec<u8>> {
     let netdir = client
         .dirmgr()
@@ -32,11 +33,16 @@ pub async fn get(
         .await
         .map_err(|e| anyhow::anyhow!("opening BEGINDIR stream: {}", e))?;
 
+    let diff_header = match diff_from {
+        Some(hex) => format!("X-Or-Diff-From-Consensus: {}\r\n", hex),
+        None => String::new(),
+    };
     let request = format!(
         "GET {} HTTP/1.0\r\n\
          Accept-Encoding: deflate, identity, x-tor-lzma, x-zstd\r\n\
+         {}\
          \r\n",
-        path
+        path, diff_header
     );
     stream
         .write_all(request.as_bytes())

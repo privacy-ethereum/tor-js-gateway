@@ -12,6 +12,7 @@ tor-circmgr = { path = "../official-arti/crates/tor-circmgr" }
 tor-netdir = { path = "../official-arti/crates/tor-netdir" }
 tor-netdoc = { path = "../official-arti/crates/tor-netdoc" }
 tor-rtcompat = { path = "../official-arti/crates/tor-rtcompat", features = ["tokio", "native-tls"] }
+tor-consdiff = { path = "../official-arti/crates/tor-consdiff" }
 
 # External
 tokio = { version = "1", features = ["full"] }
@@ -25,3 +26,6 @@ humantime = "2"
 futures = "0.3"
 async-compression = { version = "0.4", features = ["futures-io", "zlib", "xz", "zstd"] }
 base64ct = { version = "1.8", features = ["alloc"] }
+sha3 = "0.10"
+digest = "0.10"
+hex = "0.4"

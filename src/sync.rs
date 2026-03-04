@@ -11,23 +11,38 @@ use tor_netdoc::doc::netstatus::{Lifetime, MdConsensus};
 
 use arti_client::TorClient;
 
-use crate::cache::MicrodescCache;
+use crate::cache::{ConsensusCache, MicrodescCache};
 
 /// Fetch consensus, parse it, fetch missing microdescs, write everything to disk.
 /// Returns the consensus lifetime for scheduling the next sync.
+///
+/// If `consensus_cache` holds a previous consensus, a diff is requested via
+/// `X-Or-Diff-From-Consensus`. The cache is updated with the new consensus on success.
 pub async fn sync_once(
     client: &TorClient<tor_rtcompat::PreferredRuntime>,
     output_dir: &Path,
-    cache: &mut MicrodescCache,
+    consensus_cache: &mut ConsensusCache,
+    md_cache: &mut MicrodescCache,
 ) -> Result<Lifetime> {
-    // --- Fetch consensus ---
-    tracing::info!("fetching consensus...");
-    let consensus_bytes =
-        crate::dir::get(client, "/tor/status-vote/current/consensus-microdesc").await?;
-    let consensus_text =
-        String::from_utf8(consensus_bytes).context("consensus is not valid UTF-8")?;
+    // --- Fetch consensus (with diff if we have a previous one) ---
+    let diff_hex = consensus_cache.diff_hex();
+    tracing::info!(
+        "fetching consensus{}...",
+        if diff_hex.is_some() { " (requesting diff)" } else { "" }
+    );
+    let consensus_bytes = crate::dir::get(
+        client,
+        "/tor/status-vote/current/consensus-microdesc",
+        diff_hex.as_deref(),
+    )
+    .await?;
+    let response_text =
+        String::from_utf8(consensus_bytes).context("consensus response is not valid UTF-8")?;
 
-    // --- Parse consensus ---
+    // --- Apply diff if needed, update cache ---
+    let consensus_text = consensus_cache.resolve_response(response_text)?;
+
+    // --- Parse and validate consensus ---
     let (_signed, _remainder, unchecked) =
         MdConsensus::parse(&consensus_text).context("parsing consensus")?;
     let now = SystemTime::now();
@@ -48,7 +63,7 @@ pub async fn sync_once(
 
     // --- Fetch authority certificates ---
     tracing::info!("fetching authority certificates...");
-    let certs_bytes = crate::dir::get(client, "/tor/keys/all").await?;
+    let certs_bytes = crate::dir::get(client, "/tor/keys/all", None).await?;
     let certs_text =
         String::from_utf8(certs_bytes).context("authority certs are not valid UTF-8")?;
     tracing::info!("fetched authority certificates ({} bytes)", certs_text.len());
@@ -60,12 +75,12 @@ pub async fn sync_once(
         .map(|rs| *rs.md_digest())
         .collect();
 
-    cache.retain(&digests);
-    let missing = cache.missing(&digests);
+    md_cache.retain(&digests);
+    let missing = md_cache.missing(&digests);
     tracing::info!(
         "microdescs: {} in consensus, {} cached, {} to fetch",
         digests.len(),
-        cache.len(),
+        md_cache.len(),
         missing.len(),
     );
 
@@ -86,11 +101,11 @@ pub async fn sync_once(
                 .collect();
             let path = format!("/tor/micro/d/{}", digests_str.join("-"));
 
-            match crate::dir::get(client, &path).await {
+            match crate::dir::get(client, &path, None).await {
                 Ok(bytes) => {
                     let text = String::from_utf8(bytes)
                         .context("microdesc response is not valid UTF-8")?;
-                    let added = cache.ingest(&text);
+                    let added = md_cache.ingest(&text);
                     tracing::debug!("batch {}: added {} microdescs", batch_idx + 1, added);
                 }
                 Err(e) => {
@@ -100,10 +115,10 @@ pub async fn sync_once(
         }
     }
 
-    let still_missing = cache.missing(&digests);
+    let still_missing = md_cache.missing(&digests);
     tracing::info!(
         "microdescs: {} cached ({} still missing)",
-        cache.len(),
+        md_cache.len(),
         still_missing.len(),
     );
 
@@ -117,7 +132,7 @@ pub async fn sync_once(
     atomic_write(output_dir, "authority-certs", certs_text.as_bytes())?;
     tracing::info!("wrote authority-certs ({} bytes)", certs_text.len());
 
-    let microdescs_blob = cache.to_concatenated();
+    let microdescs_blob = md_cache.to_concatenated();
     atomic_write(output_dir, "microdescs", &microdescs_blob)?;
     tracing::info!("wrote microdescs ({} bytes)", microdescs_blob.len());
 
@@ -128,7 +143,7 @@ pub async fn sync_once(
         "valid_until": humantime::format_rfc3339(lifetime.valid_until()).to_string(),
         "num_relays": num_relays,
         "authority_certs_bytes": certs_text.len(),
-        "num_microdescs_in_cache": cache.len(),
+        "num_microdescs_in_cache": md_cache.len(),
         "num_microdescs_missing": still_missing.len(),
         "microdescs_bytes": microdescs_blob.len(),
         "synced_at": humantime::format_rfc3339(SystemTime::now()).to_string(),

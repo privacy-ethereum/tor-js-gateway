@@ -36,7 +36,9 @@ async fn main() -> Result<()> {
     std::fs::create_dir_all(&cli.output_dir)
         .with_context(|| format!("creating output dir {:?}", cli.output_dir))?;
 
-    // Load microdesc cache from previous run
+    // Load caches from previous run
+    let mut consensus_cache =
+        cache::ConsensusCache::load_from_file(&cli.output_dir.join("consensus-microdesc"));
     let mut md_cache =
         cache::MicrodescCache::load_from_file(&cli.output_dir.join("microdescs"))?;
 
@@ -48,7 +50,8 @@ async fn main() -> Result<()> {
     tracing::info!("TorClient bootstrapped");
 
     loop {
-        match sync::sync_once(&client, &cli.output_dir, &mut md_cache).await {
+        match sync::sync_once(&client, &cli.output_dir, &mut consensus_cache, &mut md_cache).await
+        {
             Ok(lifetime) => {
                 if cli.once {
                     return Ok(());
