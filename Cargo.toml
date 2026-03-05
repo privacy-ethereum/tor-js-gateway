@@ -5,16 +5,16 @@ edition = "2024"
 rust-version = "1.89"
 
 [dependencies]
-# Arti crates (pinned to official repo)
-arti-client = { git = "https://gitlab.torproject.org/tpo/core/arti.git", rev = "af3a26550eec96b5852e6162ec06a38a13c70dc4", features = ["tokio", "native-tls", "experimental-api"] }
-tor-checkable = { git = "https://gitlab.torproject.org/tpo/core/arti.git", rev = "af3a26550eec96b5852e6162ec06a38a13c70dc4" }
-tor-circmgr = { git = "https://gitlab.torproject.org/tpo/core/arti.git", rev = "af3a26550eec96b5852e6162ec06a38a13c70dc4" }
-tor-netdir = { git = "https://gitlab.torproject.org/tpo/core/arti.git", rev = "af3a26550eec96b5852e6162ec06a38a13c70dc4" }
-tor-netdoc = { git = "https://gitlab.torproject.org/tpo/core/arti.git", rev = "af3a26550eec96b5852e6162ec06a38a13c70dc4" }
-tor-rtcompat = { git = "https://gitlab.torproject.org/tpo/core/arti.git", rev = "af3a26550eec96b5852e6162ec06a38a13c70dc4", features = ["tokio", "native-tls"] }
-tor-consdiff = { git = "https://gitlab.torproject.org/tpo/core/arti.git", rev = "af3a26550eec96b5852e6162ec06a38a13c70dc4" }
-tor-dircommon = { git = "https://gitlab.torproject.org/tpo/core/arti.git", rev = "af3a26550eec96b5852e6162ec06a38a13c70dc4" }
-tor-llcrypto = { git = "https://gitlab.torproject.org/tpo/core/arti.git", rev = "af3a26550eec96b5852e6162ec06a38a13c70dc4" }
+# Arti crates (crates.io)
+arti-client = { version = "0.40.0", features = ["tokio", "native-tls", "experimental-api"] }
+tor-checkable = "0.40.0"
+tor-circmgr = "0.40.0"
+tor-netdir = "0.40.0"
+tor-netdoc = "0.40.0"
+tor-rtcompat = { version = "0.40.0", features = ["tokio", "native-tls"] }
+tor-consdiff = "0.40.0"
+tor-dircommon = "0.40.0"
+tor-llcrypto = "0.40.0"
 
 # External
 tokio = { version = "1", features = ["full"] }

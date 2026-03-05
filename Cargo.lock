@@ -187,8 +187,9 @@ checksum = "7c02d123df017efcdfbd739ef81735b36c5ba83ec3c59c80a9d7ecc718f92e50"
 
 [[package]]
 name = "arti-client"
-version = "0.39.0"
-source = "git+https://gitlab.torproject.org/tpo/core/arti.git?rev=af3a26550eec96b5852e6162ec06a38a13c70dc4#af3a26550eec96b5852e6162ec06a38a13c70dc4"
+version = "0.40.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e89842cae6e3bda0fd128a5c66eb3392ed412065dc698c77d9fcc4b77e4159f2"
 dependencies = [
  "async-trait",
  "cfg-if",
@@ -561,8 +562,9 @@ checksum = "1e748733b7cbc798e1434b6ac524f0c1ff2ab456fe201501e6497c8417a4fc33"
 
 [[package]]
 name = "caret"
-version = "0.8.2"
-source = "git+https://gitlab.torproject.org/tpo/core/arti.git?rev=af3a26550eec96b5852e6162ec06a38a13c70dc4#af3a26550eec96b5852e6162ec06a38a13c70dc4"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "beae2cb9f60bc3f21effaaf9c64e51f6627edd54eedc9199ba07f519ef2a2101"
 
 [[package]]
 name = "cast"
@@ -1467,8 +1469,9 @@ dependencies = [
 
 [[package]]
 name = "fs-mistrust"
-version = "0.13.2"
-source = "git+https://gitlab.torproject.org/tpo/core/arti.git?rev=af3a26550eec96b5852e6162ec06a38a13c70dc4#af3a26550eec96b5852e6162ec06a38a13c70dc4"
+version = "0.14.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "189ebb6d350de8d03181999fa9ebe8a021c5ab041004388f29e4dd2c52dc88a2"
 dependencies = [
  "derive_builder_fork_arti",
  "dirs",
@@ -2484,8 +2487,9 @@ checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
 
 [[package]]
 name = "oneshot-fused-workaround"
-version = "0.5.2"
-source = "git+https://gitlab.torproject.org/tpo/core/arti.git?rev=af3a26550eec96b5852e6162ec06a38a13c70dc4#af3a26550eec96b5852e6162ec06a38a13c70dc4"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e17b52d0e4a06a4c7eb8d2943c0015fa628cf4ccc409429cebc0f5bed6d33a82"
 dependencies = [
  "futures",
 ]
@@ -3118,8 +3122,9 @@ checksum = "dc897dd8d9e8bd1ed8cdad82b5966c3e0ecae09fb1907d58efaa013543185d0a"
 
 [[package]]
 name = "retry-error"
-version = "0.10.1"
-source = "git+https://gitlab.torproject.org/tpo/core/arti.git?rev=af3a26550eec96b5852e6162ec06a38a13c70dc4#af3a26550eec96b5852e6162ec06a38a13c70dc4"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0c322ea521636c5a3f13685a6266055b2dda7e54e2be35214d7c2a5d0672a5db"
 dependencies = [
  "humantime",
 ]
@@ -3226,8 +3231,9 @@ checksum = "9774ba4a74de5f7b1c1451ed6cd5285a32eddb5cccb8cc655a4e50009e06477f"
 
 [[package]]
 name = "safelog"
-version = "0.7.2"
-source = "git+https://gitlab.torproject.org/tpo/core/arti.git?rev=af3a26550eec96b5852e6162ec06a38a13c70dc4#af3a26550eec96b5852e6162ec06a38a13c70dc4"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8949ab2810bf603caef654634e5b4cedcbc05c120342a177cf8aaa122ef4bb76"
 dependencies = [
  "derive_more",
  "educe",
@@ -3585,8 +3591,9 @@ dependencies = [
 
 [[package]]
 name = "slotmap-careful"
-version = "0.6.0"
-source = "git+https://gitlab.torproject.org/tpo/core/arti.git?rev=af3a26550eec96b5852e6162ec06a38a13c70dc4#af3a26550eec96b5852e6162ec06a38a13c70dc4"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ed92816c1fbb29891a525b92d5fa95757c9dee47044f76c8e06ceb1e052a8d64"
 dependencies = [
  "paste",
  "serde",
@@ -4042,8 +4049,9 @@ checksum = "ab16f14aed21ee8bfd8ec22513f7287cd4a91aa92e44edfe2c17ddd004e92607"
 
 [[package]]
 name = "tor-async-utils"
-version = "0.39.0"
-source = "git+https://gitlab.torproject.org/tpo/core/arti.git?rev=af3a26550eec96b5852e6162ec06a38a13c70dc4#af3a26550eec96b5852e6162ec06a38a13c70dc4"
+version = "0.40.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "895c61a46909134501c6815eceeb66c9c80fc494ee89429821b0f05ccf34b4f5"
 dependencies = [
  "derive-deftly",
  "educe",
@@ -4057,8 +4065,9 @@ dependencies = [
 
 [[package]]
 name = "tor-basic-utils"
-version = "0.39.0"
-source = "git+https://gitlab.torproject.org/tpo/core/arti.git?rev=af3a26550eec96b5852e6162ec06a38a13c70dc4#af3a26550eec96b5852e6162ec06a38a13c70dc4"
+version = "0.40.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fac6e4d7e131b7d69bc85558383cd4ac61e46b4dd0d4ed51632f28fac98cac0c"
 dependencies = [
  "derive_more",
  "hex",
@@ -4076,8 +4085,9 @@ dependencies = [
 
 [[package]]
 name = "tor-bytes"
-version = "0.39.0"
-source = "git+https://gitlab.torproject.org/tpo/core/arti.git?rev=af3a26550eec96b5852e6162ec06a38a13c70dc4#af3a26550eec96b5852e6162ec06a38a13c70dc4"
+version = "0.40.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "64454947258e49f238a5f06a06250a0c54598a1c7409898b5c79505e6a99e7af"
 dependencies = [
  "bytes",
  "derive-deftly",
@@ -4093,8 +4103,9 @@ dependencies = [
 
 [[package]]
 name = "tor-cell"
-version = "0.39.0"
-source = "git+https://gitlab.torproject.org/tpo/core/arti.git?rev=af3a26550eec96b5852e6162ec06a38a13c70dc4#af3a26550eec96b5852e6162ec06a38a13c70dc4"
+version = "0.40.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4ab0c79bc92a957e85959cf397a2d8f9c8294c35fa4f65247a9393b20ac95551"
 dependencies = [
  "amplify",
  "bitflags 2.11.0",
@@ -4122,8 +4133,9 @@ dependencies = [
 
 [[package]]
 name = "tor-cert"
-version = "0.39.0"
-source = "git+https://gitlab.torproject.org/tpo/core/arti.git?rev=af3a26550eec96b5852e6162ec06a38a13c70dc4#af3a26550eec96b5852e6162ec06a38a13c70dc4"
+version = "0.40.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "debc911738298ee801fce4577c36a50c55295b0bb9c5519461b83cc486a1f86e"
 dependencies = [
  "caret",
  "derive_builder_fork_arti",
@@ -4138,8 +4150,9 @@ dependencies = [
 
 [[package]]
 name = "tor-chanmgr"
-version = "0.39.0"
-source = "git+https://gitlab.torproject.org/tpo/core/arti.git?rev=af3a26550eec96b5852e6162ec06a38a13c70dc4#af3a26550eec96b5852e6162ec06a38a13c70dc4"
+version = "0.40.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7af5b7c2f1e16d1304b5185fcbc91ca5c8df991c21be00702f925f055573eea1"
 dependencies = [
  "async-trait",
  "caret",
@@ -4177,8 +4190,9 @@ dependencies = [
 
 [[package]]
 name = "tor-checkable"
-version = "0.39.0"
-source = "git+https://gitlab.torproject.org/tpo/core/arti.git?rev=af3a26550eec96b5852e6162ec06a38a13c70dc4#af3a26550eec96b5852e6162ec06a38a13c70dc4"
+version = "0.40.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "15b13a5b50bb55037f2e81b25dde42f420d57c75154216b8ef989006cea3ebee"
 dependencies = [
  "humantime",
  "signature",
@@ -4188,8 +4202,9 @@ dependencies = [
 
 [[package]]
 name = "tor-circmgr"
-version = "0.39.0"
-source = "git+https://gitlab.torproject.org/tpo/core/arti.git?rev=af3a26550eec96b5852e6162ec06a38a13c70dc4#af3a26550eec96b5852e6162ec06a38a13c70dc4"
+version = "0.40.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b878f3f7c6be0c7f130d90b347ada2e7c46519dfbdde8273eae2e5d1792caa87"
 dependencies = [
  "amplify",
  "async-trait",
@@ -4236,8 +4251,9 @@ dependencies = [
 
 [[package]]
 name = "tor-config"
-version = "0.39.0"
-source = "git+https://gitlab.torproject.org/tpo/core/arti.git?rev=af3a26550eec96b5852e6162ec06a38a13c70dc4#af3a26550eec96b5852e6162ec06a38a13c70dc4"
+version = "0.40.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3cbc74a00ab15bb986e3747c6969e40a58a63065d6f99077e7ee2f4657bb8b03"
 dependencies = [
  "amplify",
  "cfg-if",
@@ -4269,8 +4285,9 @@ dependencies = [
 
 [[package]]
 name = "tor-config-path"
-version = "0.39.0"
-source = "git+https://gitlab.torproject.org/tpo/core/arti.git?rev=af3a26550eec96b5852e6162ec06a38a13c70dc4#af3a26550eec96b5852e6162ec06a38a13c70dc4"
+version = "0.40.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3005ab7b9a26a7271e5adf3dfb4ae18c09a943e32aeccc4f6d1c53a60de74b8d"
 dependencies = [
  "directories",
  "serde",
@@ -4282,8 +4299,9 @@ dependencies = [
 
 [[package]]
 name = "tor-consdiff"
-version = "0.39.0"
-source = "git+https://gitlab.torproject.org/tpo/core/arti.git?rev=af3a26550eec96b5852e6162ec06a38a13c70dc4#af3a26550eec96b5852e6162ec06a38a13c70dc4"
+version = "0.40.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6bfa2b7b71c72830f61c48da4bb3e13191e0c0e1404b9c5168c795e4f5feb4a8"
 dependencies = [
  "digest",
  "hex",
@@ -4293,8 +4311,9 @@ dependencies = [
 
 [[package]]
 name = "tor-dirclient"
-version = "0.39.0"
-source = "git+https://gitlab.torproject.org/tpo/core/arti.git?rev=af3a26550eec96b5852e6162ec06a38a13c70dc4#af3a26550eec96b5852e6162ec06a38a13c70dc4"
+version = "0.40.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8ccd6fac844ac77c33ccdfcb56bf23ff40ebbb821ea708be79a481ec30e8c39c"
 dependencies = [
  "async-compression",
  "base64ct",
@@ -4319,8 +4338,9 @@ dependencies = [
 
 [[package]]
 name = "tor-dircommon"
-version = "0.39.0"
-source = "git+https://gitlab.torproject.org/tpo/core/arti.git?rev=af3a26550eec96b5852e6162ec06a38a13c70dc4#af3a26550eec96b5852e6162ec06a38a13c70dc4"
+version = "0.40.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dd0cf39a3c30321d145a4d60753ae7ef5bb58a66a00ac9e2bfc30bd823faf2a4"
 dependencies = [
  "base64ct",
  "derive-deftly",
@@ -4339,8 +4359,9 @@ dependencies = [
 
 [[package]]
 name = "tor-dirmgr"
-version = "0.39.0"
-source = "git+https://gitlab.torproject.org/tpo/core/arti.git?rev=af3a26550eec96b5852e6162ec06a38a13c70dc4#af3a26550eec96b5852e6162ec06a38a13c70dc4"
+version = "0.40.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b52919aa9dbb82a354c5b904bef82e91beb702b9f8ad14e6eac4237d6128bf67"
 dependencies = [
  "async-trait",
  "base64ct",
@@ -4393,8 +4414,9 @@ dependencies = [
 
 [[package]]
 name = "tor-error"
-version = "0.39.0"
-source = "git+https://gitlab.torproject.org/tpo/core/arti.git?rev=af3a26550eec96b5852e6162ec06a38a13c70dc4#af3a26550eec96b5852e6162ec06a38a13c70dc4"
+version = "0.40.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "595b005e6f571ac3890a34a00f361200aab781fd0218f2c528c86fc7af088df5"
 dependencies = [
  "derive_more",
  "futures",
@@ -4442,8 +4464,9 @@ dependencies = [
 
 [[package]]
 name = "tor-general-addr"
-version = "0.39.0"
-source = "git+https://gitlab.torproject.org/tpo/core/arti.git?rev=af3a26550eec96b5852e6162ec06a38a13c70dc4#af3a26550eec96b5852e6162ec06a38a13c70dc4"
+version = "0.40.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "727b8c8bc01c1587486055edab5c2cd0d5c960f5bb3fac796fc9911872b8b397"
 dependencies = [
  "derive_more",
  "thiserror 2.0.18",
@@ -4452,8 +4475,9 @@ dependencies = [
 
 [[package]]
 name = "tor-guardmgr"
-version = "0.39.0"
-source = "git+https://gitlab.torproject.org/tpo/core/arti.git?rev=af3a26550eec96b5852e6162ec06a38a13c70dc4#af3a26550eec96b5852e6162ec06a38a13c70dc4"
+version = "0.40.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d337f465a477c0fb3b2faafa4654d70ff9df3590e57d22707591dddb4e4450c1"
 dependencies = [
  "amplify",
  "base64ct",
@@ -4494,8 +4518,9 @@ dependencies = [
 
 [[package]]
 name = "tor-hscrypto"
-version = "0.39.0"
-source = "git+https://gitlab.torproject.org/tpo/core/arti.git?rev=af3a26550eec96b5852e6162ec06a38a13c70dc4#af3a26550eec96b5852e6162ec06a38a13c70dc4"
+version = "0.40.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a3693cd43f05cd01ac0aaa060dae5c5e53c4364f89e0d769e33cd629a2fd3118"
 dependencies = [
  "data-encoding",
  "derive-deftly",
@@ -4522,8 +4547,9 @@ dependencies = [
 
 [[package]]
 name = "tor-key-forge"
-version = "0.39.0"
-source = "git+https://gitlab.torproject.org/tpo/core/arti.git?rev=af3a26550eec96b5852e6162ec06a38a13c70dc4#af3a26550eec96b5852e6162ec06a38a13c70dc4"
+version = "0.40.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3ade9065ae49cfe2ab020ca9ca9f2b3c5c9b5fc0d8980fa681d8b3a0668e042f"
 dependencies = [
  "derive-deftly",
  "derive_more",
@@ -4543,8 +4569,9 @@ dependencies = [
 
 [[package]]
 name = "tor-keymgr"
-version = "0.39.0"
-source = "git+https://gitlab.torproject.org/tpo/core/arti.git?rev=af3a26550eec96b5852e6162ec06a38a13c70dc4#af3a26550eec96b5852e6162ec06a38a13c70dc4"
+version = "0.40.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "243c3163d376c4723cd67271fcd6e5d6b498a6865c6b98299640e1be01c38826"
 dependencies = [
  "amplify",
  "arrayvec",
@@ -4582,8 +4609,9 @@ dependencies = [
 
 [[package]]
 name = "tor-linkspec"
-version = "0.39.0"
-source = "git+https://gitlab.torproject.org/tpo/core/arti.git?rev=af3a26550eec96b5852e6162ec06a38a13c70dc4#af3a26550eec96b5852e6162ec06a38a13c70dc4"
+version = "0.40.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "05f1ea8786900d6fbe4c9f775d341b1ba01bbd1f750d89bd63be78b6b01e1836"
 dependencies = [
  "base64ct",
  "by_address",
@@ -4608,8 +4636,9 @@ dependencies = [
 
 [[package]]
 name = "tor-llcrypto"
-version = "0.39.0"
-source = "git+https://gitlab.torproject.org/tpo/core/arti.git?rev=af3a26550eec96b5852e6162ec06a38a13c70dc4#af3a26550eec96b5852e6162ec06a38a13c70dc4"
+version = "0.40.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1c6989a1c6d06ffd6835e2917edaae4aeef544f8e5fdd68b54cc365f2af523de"
 dependencies = [
  "aes",
  "base64ct",
@@ -4647,8 +4676,9 @@ dependencies = [
 
 [[package]]
 name = "tor-log-ratelim"
-version = "0.39.0"
-source = "git+https://gitlab.torproject.org/tpo/core/arti.git?rev=af3a26550eec96b5852e6162ec06a38a13c70dc4#af3a26550eec96b5852e6162ec06a38a13c70dc4"
+version = "0.40.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3f1cd642180923d12e3fab5996b4aa2189718da7f465df6eb196ce2b9c70e293"
 dependencies = [
  "futures",
  "humantime",
@@ -4661,8 +4691,9 @@ dependencies = [
 
 [[package]]
 name = "tor-memquota"
-version = "0.39.0"
-source = "git+https://gitlab.torproject.org/tpo/core/arti.git?rev=af3a26550eec96b5852e6162ec06a38a13c70dc4#af3a26550eec96b5852e6162ec06a38a13c70dc4"
+version = "0.40.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "599daea60fd3272eb72a795d1c593b45bbe15343cbc702340a81db124c06eed5"
 dependencies = [
  "cfg-if",
  "derive-deftly",
@@ -4691,8 +4722,9 @@ dependencies = [
 
 [[package]]
 name = "tor-memquota-cost"
-version = "0.39.0"
-source = "git+https://gitlab.torproject.org/tpo/core/arti.git?rev=af3a26550eec96b5852e6162ec06a38a13c70dc4#af3a26550eec96b5852e6162ec06a38a13c70dc4"
+version = "0.40.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dd92b07c0fc24e6d8166a5ff45e5b8654e68d89743c46d01889a16ab74c0b578"
 dependencies = [
  "derive-deftly",
  "itertools 0.14.0",
@@ -4702,8 +4734,9 @@ dependencies = [
 
 [[package]]
 name = "tor-netdir"
-version = "0.39.0"
-source = "git+https://gitlab.torproject.org/tpo/core/arti.git?rev=af3a26550eec96b5852e6162ec06a38a13c70dc4#af3a26550eec96b5852e6162ec06a38a13c70dc4"
+version = "0.40.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "41be8f47f521fc95206d2ba5facac8fb1a5b5b82169bd41ebeecdf46d1e77246"
 dependencies = [
  "async-trait",
  "bitflags 2.11.0",
@@ -4729,8 +4762,9 @@ dependencies = [
 
 [[package]]
 name = "tor-netdoc"
-version = "0.39.0"
-source = "git+https://gitlab.torproject.org/tpo/core/arti.git?rev=af3a26550eec96b5852e6162ec06a38a13c70dc4#af3a26550eec96b5852e6162ec06a38a13c70dc4"
+version = "0.40.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ea8bce73d2c78bd78a2a927336ca639cf6bd5d8ad092ebcd0b3fdeaa47dcc77e"
 dependencies = [
  "amplify",
  "base64ct",
@@ -4771,8 +4805,9 @@ dependencies = [
 
 [[package]]
 name = "tor-persist"
-version = "0.39.0"
-source = "git+https://gitlab.torproject.org/tpo/core/arti.git?rev=af3a26550eec96b5852e6162ec06a38a13c70dc4#af3a26550eec96b5852e6162ec06a38a13c70dc4"
+version = "0.40.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "507ab4b6a3d59ed0df5804eeed66dcacde75e3be13d3694216cdfdb666bce625"
 dependencies = [
  "derive-deftly",
  "derive_more",
@@ -4797,8 +4832,9 @@ dependencies = [
 
 [[package]]
 name = "tor-proto"
-version = "0.39.0"
-source = "git+https://gitlab.torproject.org/tpo/core/arti.git?rev=af3a26550eec96b5852e6162ec06a38a13c70dc4#af3a26550eec96b5852e6162ec06a38a13c70dc4"
+version = "0.40.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bbfc552d535d36539d5782bb02028590bc472d219e49da51a96810725e80ff56"
 dependencies = [
  "amplify",
  "async-trait",
@@ -4862,8 +4898,9 @@ dependencies = [
 
 [[package]]
 name = "tor-protover"
-version = "0.39.0"
-source = "git+https://gitlab.torproject.org/tpo/core/arti.git?rev=af3a26550eec96b5852e6162ec06a38a13c70dc4#af3a26550eec96b5852e6162ec06a38a13c70dc4"
+version = "0.40.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "aed88527d070c4b7ea4e55a36d2d56d0500e30ca66298b5264f047f7f2f89cfa"
 dependencies = [
  "caret",
  "paste",
@@ -4875,8 +4912,9 @@ dependencies = [
 
 [[package]]
 name = "tor-relay-crypto"
-version = "0.39.0"
-source = "git+https://gitlab.torproject.org/tpo/core/arti.git?rev=af3a26550eec96b5852e6162ec06a38a13c70dc4#af3a26550eec96b5852e6162ec06a38a13c70dc4"
+version = "0.40.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f7e57e9f71b22ae1df63dbccc8e428cb07feec0abd654735109fa563c10bbb90"
 dependencies = [
  "derive-deftly",
  "derive_more",
@@ -4892,8 +4930,9 @@ dependencies = [
 
 [[package]]
 name = "tor-relay-selection"
-version = "0.39.0"
-source = "git+https://gitlab.torproject.org/tpo/core/arti.git?rev=af3a26550eec96b5852e6162ec06a38a13c70dc4#af3a26550eec96b5852e6162ec06a38a13c70dc4"
+version = "0.40.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a372072ac9dea7d17e49693cc3f3ae77b3abf8125630516c9f2d622239b1920a"
 dependencies = [
  "rand 0.9.2",
  "serde",
@@ -4905,8 +4944,9 @@ dependencies = [
 
 [[package]]
 name = "tor-rtcompat"
-version = "0.39.0"
-source = "git+https://gitlab.torproject.org/tpo/core/arti.git?rev=af3a26550eec96b5852e6162ec06a38a13c70dc4#af3a26550eec96b5852e6162ec06a38a13c70dc4"
+version = "0.40.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "14428b930e59003e801c0c32697c0aeb9b0495ad33ecbe8c6753bdb596233270"
 dependencies = [
  "async-native-tls",
  "async-trait",
@@ -4936,8 +4976,9 @@ dependencies = [
 
 [[package]]
 name = "tor-rtmock"
-version = "0.39.0"
-source = "git+https://gitlab.torproject.org/tpo/core/arti.git?rev=af3a26550eec96b5852e6162ec06a38a13c70dc4#af3a26550eec96b5852e6162ec06a38a13c70dc4"
+version = "0.40.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d2da91a432cdaee8a93e0bb21b02f3e9c7667832ccbb4b54e00d9c1214638e70"
 dependencies = [
  "amplify",
  "assert_matches",
@@ -4964,8 +5005,9 @@ dependencies = [
 
 [[package]]
 name = "tor-socksproto"
-version = "0.39.0"
-source = "git+https://gitlab.torproject.org/tpo/core/arti.git?rev=af3a26550eec96b5852e6162ec06a38a13c70dc4#af3a26550eec96b5852e6162ec06a38a13c70dc4"
+version = "0.40.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "adbc9115a2f506d9bb86ae4446f0ca70eb523dc2f5e900a33582e7c39decc23a"
 dependencies = [
  "amplify",
  "caret",
@@ -4980,8 +5022,9 @@ dependencies = [
 
 [[package]]
 name = "tor-units"
-version = "0.39.0"
-source = "git+https://gitlab.torproject.org/tpo/core/arti.git?rev=af3a26550eec96b5852e6162ec06a38a13c70dc4#af3a26550eec96b5852e6162ec06a38a13c70dc4"
+version = "0.40.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "da90e93b4b4aa4ec356ecbe9e19aced36fdd655e94ca459d1915120d873363f0"
 dependencies = [
  "derive-deftly",
  "derive_more",

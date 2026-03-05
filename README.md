@@ -18,7 +18,7 @@ Each sync cycle:
 
 ## Building
 
-Requires Rust 1.89+. Arti dependencies are fetched from the [official GitLab repo](https://gitlab.torproject.org/tpo/core/arti) at a pinned commit.
+Requires Rust 1.89+. Arti dependencies are pulled from [crates.io](https://crates.io/crates/arti-client).
 
 ```
 cargo build --release
