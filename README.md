@@ -46,15 +46,21 @@ Set `RUST_LOG` to control log verbosity (default: `info`). Example:
 RUST_LOG=debug tor-fast-bootstrap -o ./data
 ```
 
+## Web UI
+
+Navigate to `http://localhost:42298/` to open the built-in web interface. Click **Bootstrap** to download and inspect the current bootstrap archive directly in your browser.
+
 ## HTTP endpoints
 
-| Path | Content-Type | Content negotiation | Description |
-|---|---|---|---|
-| `/metadata.json` | `application/json` | brotli, gzip, identity | Sync metadata (timestamps, relay count, file sizes) |
-| `/bootstrap.zip` | `application/zip` | brotli, gzip, identity | Bootstrap archive containing all three documents |
-| `/bootstrap.zip.br` | `application/octet-stream` | none | Raw brotli-compressed archive (no `Content-Encoding` header) |
+| Path | Content-Type | Description |
+|---|---|---|
+| `/` | `text/html` | Web UI |
+| `/metadata.json` | `application/json` | Sync metadata (brotli/gzip/identity) |
+| `/bootstrap.zip` | `application/zip` | Bootstrap archive (brotli/gzip/identity) |
+| `/bootstrap.zip.br` | `application/zip` or `application/octet-stream` | Brotli archive — transparent decoding if client accepts `br`, raw bytes otherwise |
+| `/torFastBootstrap.js` | `text/javascript` | ES module: download, decompress, and parse bootstrap archives |
 
-All endpoints return `503 Service Unavailable` before the first successful sync.
+Data endpoints return `503 Service Unavailable` before the first successful sync.
 
 The server negotiates `Accept-Encoding` and serves pre-compressed `.br` or `.gz` variants from disk — no on-the-fly compression.
 
