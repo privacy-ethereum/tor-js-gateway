@@ -27,7 +27,10 @@ cargo build --release
 ### Docker
 
 ```
+# needs a decent amount of memory
 docker build --network=host -t tor-fast-bootstrap .
+
+# can run on a small machine, but requires transfer from build server
 docker run --network=host tor-fast-bootstrap
 ```
 
