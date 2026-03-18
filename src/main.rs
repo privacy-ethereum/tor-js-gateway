@@ -1,6 +1,7 @@
 mod config;
 mod dir;
 mod server;
+mod service;
 mod store;
 mod sync;
 mod ws_proxy;
@@ -41,6 +42,10 @@ enum Command {
     ShowConfig,
     /// Print the hardcoded default config
     ShowDefaultConfig,
+    /// Install and start a systemd user service
+    Install,
+    /// Stop and remove the systemd user service
+    Uninstall,
 }
 
 #[tokio::main]
@@ -59,6 +64,8 @@ async fn main() -> Result<()> {
             Ok(())
         }
         Command::Run { once } => run(&cli.config, once).await,
+        Command::Install => service::install(&cli.config),
+        Command::Uninstall => service::uninstall(),
     }
 }
 
