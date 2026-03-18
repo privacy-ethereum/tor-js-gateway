@@ -1,107 +1,177 @@
 # tor-js-gateway
 
-Long-running Tor directory cache daemon that syncs consensus documents, authority certificates, and microdescriptors directly from the Tor network using the directory protocol. Serves a pre-built bootstrap archive over HTTP for fast client bootstrapping.
+Gateway server for [tor-js](https://github.com/voltrevo/tor-js) — everything a browser needs to be a Tor client. Provides fast bootstrap data, a WebSocket-to-TCP relay for reaching Tor relays, and (planned) WebRTC peer discovery.
 
-## How it works
+Built with [Arti](https://gitlab.torproject.org/tpo/core/arti), the Rust Tor implementation.
 
-The daemon uses [Arti](https://gitlab.torproject.org/tpo/core/arti) to connect to Tor directory authorities via BEGINDIR streams. It follows the relay-style sync schedule from [dir-spec §5.3](https://spec.torproject.org/dir-spec/directory-cache-operation.html#download-ns-from-auth), fetching a new consensus shortly after the current one stops being fresh.
+## Features
 
-Each sync cycle:
+- **Fast Bootstrap** — Syncs consensus, authority certificates, and microdescriptors from the Tor network and serves them as a pre-compressed archive. Clients bootstrap in seconds.
+- **WebSocket Relay** — Bridges browser WebSocket connections to raw TCP sockets so JavaScript can construct Tor circuits. Only allows connections to relays advertised in the current consensus.
+- **Peer Discovery** — (Planned) WebRTC signaling for tor-js clients to find each other.
 
-1. Opens a dedicated directory circuit (retired immediately so it's never reused by other code)
-2. Fetches the microdescriptor consensus (requesting a diff via `X-Or-Diff-From-Consensus` if a previous consensus is cached)
-3. Fetches authority certificates (only if any trusted authority is missing a valid cert)
-4. Verifies the consensus (timeliness + authority signatures)
-5. Fetches only missing microdescriptors in batches of 500
-6. Writes all files atomically to the output directory
-7. Builds a `bootstrap.zip` archive with pre-compressed brotli and gzip variants
+## Quick start
 
-## Building
-
-Requires Rust 1.89+. Arti dependencies are pulled from [crates.io](https://crates.io/crates/arti-client).
+Requires Rust 1.89+.
 
 ```
-cargo build --release
+cargo install --path .
+tor-js-gateway init
+tor-js-gateway
 ```
 
-### Docker
+This creates a config at `~/.config/tor-js-gateway/config.json5` with sensible defaults and starts the server. Data (consensus, bootstrap archives) is stored in `~/.local/share/tor-js-gateway/`.
+
+### Install as a service
 
 ```
-# needs a decent amount of memory
-docker build --network=host -t tor-js-gateway .
-
-# can run on a small machine, but requires transfer from build server
-docker run --network=host tor-js-gateway
+tor-js-gateway install
 ```
 
-For production, run detached with restart policy and log retention:
+This writes a systemd user unit, enables it, and starts it. The service starts on boot and restarts on failure. Manage with standard systemd commands:
 
 ```
-docker run -d --restart unless-stopped \
-  --log-opt max-size=10m --log-opt max-file=3 \
-  --network=host --name tor-js-gateway \
-  tor-js-gateway
+systemctl --user status tor-js-gateway
+systemctl --user restart tor-js-gateway
+journalctl --user -u tor-js-gateway -f
 ```
 
-`--network=host` is needed at build time so the builder can fetch crates, and at run time so the daemon can reach Tor directory authorities. If your Docker bridge network has working outbound connectivity, you can use `-p 42298:42298` instead of `--network=host` at run time.
-
-## Usage
+To remove:
 
 ```
-tor-js-gateway --output-dir ./data
+tor-js-gateway uninstall
 ```
 
-### CLI flags
+## Configuration
 
-| Flag | Default | Description |
-|---|---|---|
-| `-o, --output-dir` | (required) | Directory for cached documents and bootstrap archive |
-| `-p, --port` | `42298` | HTTP server port (`0` to disable) |
-| `--once` | off | Exit after the first successful sync instead of looping |
-| `--allow-uncompressed` | off | Serve uncompressed `/bootstrap.zip` (production should use `/bootstrap.zip.br`) |
+Config is stored as JSON5 (supports comments and trailing commas) at `~/.config/tor-js-gateway/config.json5`. All fields are required.
+
+```json5
+{
+  // Directory for cached consensus data and bootstrap archives
+  "data_dir": "~/.local/share/tor-js-gateway",
+
+  // HTTP server port (0 to disable)
+  "port": 42298,
+
+  // Serve uncompressed /bootstrap.zip
+  "allow_uncompressed": false,
+
+  // Max concurrent WebSocket relay connections
+  "ws_max_connections": 8192,
+
+  // Max WebSocket relay connections per client IP
+  "ws_per_ip_limit": 16,
+
+  // WebSocket relay idle timeout in seconds
+  "ws_idle_timeout": 300,
+
+  // WebSocket relay max connection lifetime in seconds
+  "ws_max_lifetime": 3600,
+}
+```
+
+Use `tor-js-gateway show-default-config` to print defaults, or `tor-js-gateway show-config` to print the current effective config. A custom config path can be specified with `-c`:
+
+```
+tor-js-gateway -c /path/to/config.json5
+```
 
 ### Environment
 
-Set `RUST_LOG` to control log verbosity (default: `info`). Example:
+Set `RUST_LOG` to control log verbosity (default: `info`):
 
 ```
-RUST_LOG=debug tor-js-gateway -o ./data
+RUST_LOG=debug tor-js-gateway
 ```
 
-## Web UI
+## CLI
 
-Navigate to `http://localhost:42298/` to open the built-in web interface. Click **Bootstrap** to download and inspect the current bootstrap archive directly in your browser.
+```
+tor-js-gateway [OPTIONS] [COMMAND]
+```
+
+| Command | Description |
+|---|---|
+| `run` | Run the server in the foreground (default) |
+| `init` | Create a default config file |
+| `show-config` | Print the current config from disk |
+| `show-default-config` | Print the hardcoded default config |
+| `install` | Install and start a systemd user service |
+| `uninstall` | Stop and remove the systemd user service |
+
+| Option | Description |
+|---|---|
+| `-c, --config <PATH>` | Config file path (default: `~/.config/tor-js-gateway/config.json5`) |
+| `run --once` | Exit after the first successful sync |
+
+## How sync works
+
+The daemon connects to Tor directory authorities via BEGINDIR streams, following the relay-style sync schedule from [dir-spec §5.3](https://spec.torproject.org/dir-spec/directory-cache-operation.html#download-ns-from-auth).
+
+Each sync cycle:
+
+1. Opens a dedicated directory circuit (retired immediately so it's never reused)
+2. Fetches the microdescriptor consensus (requesting a diff if a previous consensus is cached)
+3. Fetches authority certificates (only if coverage is incomplete)
+4. Verifies the consensus (timeliness + authority signatures)
+5. Fetches only missing microdescriptors in batches of 500
+6. Updates the relay allowlist for the WebSocket proxy
+7. Writes all files atomically to the data directory
+8. Builds `bootstrap.zip` with pre-compressed brotli and gzip variants
 
 ## HTTP endpoints
 
-| Path | Content-Type | Description |
+| Path | Description |
+|---|---|
+| `/` | Landing page |
+| `/bootstrap` | Bootstrap inspector — download and explore the consensus interactively |
+| `/metadata.json` | Sync metadata (consensus lifetime, relay count, timestamps) |
+| `/bootstrap.zip.br` | Brotli bootstrap archive (transparent decoding if client accepts `br`) |
+| `/bootstrap.zip` | Uncompressed bootstrap archive (disabled by default) |
+| `/torJsGateway.js` | ES module for downloading and parsing bootstrap archives |
+| `/socket/{ip}:{port}` | WebSocket-to-TCP relay (consensus relays only) |
+
+Data endpoints return `503` before the first successful sync. The server negotiates `Accept-Encoding` and serves pre-compressed `.br` or `.gz` variants from disk. Bootstrap endpoints support `ETag`/`If-None-Match` for 304 responses.
+
+## WebSocket relay
+
+The `/socket/{ip}:{port}` endpoint upgrades to a WebSocket and relays binary messages bidirectionally to the target TCP address. Connections are restricted to:
+
+- Addresses advertised in the current Tor consensus (exact IP:port match)
+- Non-local IPs (private/loopback/link-local rejected as defence-in-depth)
+
+Limits (configurable via config file):
+
+| Limit | Default | Description |
 |---|---|---|
-| `/` | `text/html` | Web UI |
-| `/metadata.json` | `application/json` | Sync metadata (brotli/gzip/identity) |
-| `/bootstrap.zip` | `application/zip` | Bootstrap archive (brotli/gzip/identity) |
-| `/bootstrap.zip.br` | `application/zip` or `application/octet-stream` | Brotli archive — transparent decoding if client accepts `br`, raw bytes otherwise |
-| `/torJsGateway.js` | `text/javascript` | ES module: download, decompress, and parse bootstrap archives |
+| `ws_max_connections` | 8192 | Global concurrent connection cap |
+| `ws_per_ip_limit` | 16 | Per client IP |
+| `ws_idle_timeout` | 300s | Closed if no data flows in either direction |
+| `ws_max_lifetime` | 3600s | Hard cutoff per connection |
 
-Data endpoints return `503 Service Unavailable` before the first successful sync.
+## Data files
 
-The server negotiates `Accept-Encoding` and serves pre-compressed `.br` or `.gz` variants from disk — no on-the-fly compression.
-
-Bootstrap endpoints (`/bootstrap.zip` and `/bootstrap.zip.br`) return an `ETag` header derived from a SHA3-256 hash of the archive. Clients can send `If-None-Match` to receive a `304 Not Modified` response when the content hasn't changed.
-
-## Output files
-
-After a successful sync, the output directory contains:
+After a successful sync, the data directory contains:
 
 | File | Description |
 |---|---|
 | `consensus-microdesc.txt` | Current microdescriptor consensus |
 | `authority-certs.txt` | Trusted authority certificates |
-| `microdescs.txt` | Concatenated microdescriptors for all relays in the consensus |
-| `metadata.json` | Sync metadata (consensus lifetime, relay count, file sizes, sync timestamp) |
-| `bootstrap.zip` | Uncompressed zip archive of the three `.txt` files (stored, no zip-level compression) |
-| `bootstrap.zip.br` | Brotli-compressed bootstrap.zip (quality 6) |
-| `bootstrap.zip.gz` | Gzip-compressed bootstrap.zip |
+| `microdescs.txt` | Concatenated microdescriptors |
+| `metadata.json` | Sync metadata |
+| `bootstrap.zip` | Uncompressed zip of the above `.txt` files |
+| `bootstrap.zip.br` | Brotli-compressed (quality 6) |
+| `bootstrap.zip.gz` | Gzip-compressed |
+| `bootstrap.etag` | SHA3-256 hash for ETag |
 
-The zip archive uses `Stored` compression (no deflate) since the outer brotli/gzip layer handles compression. Files inside the archive are under a `bootstrap/` prefix.
+All files are written atomically via `.tmp` intermediates.
 
-All files are written atomically via a `.tmp` intermediate to avoid serving partial data.
+## Docker
+
+```
+docker build --network=host -t tor-js-gateway .
+docker run --network=host tor-js-gateway
+```
+
+`--network=host` is needed at build time for fetching crates, and at run time for reaching Tor directory authorities. Use `-p 42298:42298` instead if your Docker bridge has working outbound connectivity.

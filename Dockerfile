@@ -15,6 +15,5 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
 COPY --from=builder /src/target/release/tor-js-gateway /usr/local/bin/
 
 EXPOSE 42298
-VOLUME /data
 
-ENTRYPOINT ["tor-js-gateway", "--output-dir", "/data"]
+ENTRYPOINT ["tor-js-gateway"]
