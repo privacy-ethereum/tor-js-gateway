@@ -1,3 +1,4 @@
+mod config;
 mod dir;
 mod server;
 mod store;
@@ -10,49 +11,58 @@ use std::sync::{Arc, RwLock};
 use std::time::{Duration, SystemTime};
 
 use anyhow::{Context, Result};
-use clap::Parser;
+use clap::{Parser, Subcommand};
 
 use arti_client::{TorClient, TorClientConfig};
 
 #[derive(Parser)]
 #[command(name = "tor-js-gateway")]
-#[command(about = "Long-running Tor directory cache — syncs like a relay")]
+#[command(about = "Gateway server for tor-js — bootstrap, WebSocket relay, peer discovery")]
 struct Cli {
-    /// Output directory for cached documents
-    #[arg(short, long)]
-    output_dir: PathBuf,
+    /// Path to config file
+    #[arg(short, long, default_value_os_t = config::config_path())]
+    config: PathBuf,
 
-    /// Exit after the first successful sync instead of looping
-    #[arg(long)]
-    once: bool,
+    #[command(subcommand)]
+    command: Option<Command>,
+}
 
-    /// HTTP server port (0 to disable)
-    #[arg(short, long, default_value_t = 42298)]
-    port: u16,
-
-    /// Serve uncompressed /bootstrap.zip (off by default; production should use /bootstrap.zip.br)
-    #[arg(long)]
-    allow_uncompressed: bool,
-
-    /// Max concurrent WebSocket relay connections (0 = unlimited)
-    #[arg(long, default_value_t = 8192)]
-    ws_max_connections: usize,
-
-    /// Max WebSocket relay connections per client IP (0 = unlimited)
-    #[arg(long, default_value_t = 16)]
-    ws_per_ip_limit: usize,
-
-    /// WebSocket relay idle timeout in seconds
-    #[arg(long, default_value_t = 300)]
-    ws_idle_timeout: u64,
-
-    /// WebSocket relay max connection lifetime in seconds
-    #[arg(long, default_value_t = 3600)]
-    ws_max_lifetime: u64,
+#[derive(Subcommand)]
+enum Command {
+    /// Run the gateway server (default when no subcommand given)
+    Run {
+        /// Exit after the first successful sync instead of looping
+        #[arg(long)]
+        once: bool,
+    },
+    /// Create a default config file
+    Init,
+    /// Print the current config from disk
+    ShowConfig,
+    /// Print the hardcoded default config
+    ShowDefaultConfig,
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    let cli = Cli::parse();
+
+    match cli.command.unwrap_or(Command::Run { once: false }) {
+        Command::Init => config::Config::init(&cli.config),
+        Command::ShowConfig => {
+            let cfg = config::Config::load(&cli.config)?;
+            println!("{}", json5::to_string(&cfg)?);
+            Ok(())
+        }
+        Command::ShowDefaultConfig => {
+            println!("{}", config::Config::to_json5_with_comments());
+            Ok(())
+        }
+        Command::Run { once } => run(&cli.config, once).await,
+    }
+}
+
+async fn run(config_path: &PathBuf, once: bool) -> Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
@@ -60,46 +70,48 @@ async fn main() -> Result<()> {
         )
         .init();
 
-    let cli = Cli::parse();
-    std::fs::create_dir_all(&cli.output_dir)
-        .with_context(|| format!("creating output dir {:?}", cli.output_dir))?;
+    let cfg = config::Config::load(config_path)?;
+    std::fs::create_dir_all(&cfg.data_dir)
+        .with_context(|| format!("creating data dir {:?}", cfg.data_dir))?;
 
     let relay_allowlist: ws_proxy::RelayAllowlist = Arc::new(RwLock::new(HashSet::new()));
     let ws_limits = ws_proxy::WsLimits {
-        max_connections: cli.ws_max_connections,
-        per_ip_limit: cli.ws_per_ip_limit,
-        idle_timeout: Duration::from_secs(cli.ws_idle_timeout),
-        max_lifetime: Duration::from_secs(cli.ws_max_lifetime),
+        max_connections: cfg.ws_max_connections,
+        per_ip_limit: cfg.ws_per_ip_limit,
+        idle_timeout: Duration::from_secs(cfg.ws_idle_timeout),
+        max_lifetime: Duration::from_secs(cfg.ws_max_lifetime),
     };
 
-    // Start HTTP server (unless disabled with --port 0)
-    if cli.port != 0 {
-        let output_dir = cli.output_dir.clone();
-        let port = cli.port;
+    // Start HTTP server (unless disabled with port: 0)
+    if cfg.port != 0 {
+        let data_dir = cfg.data_dir.clone();
+        let port = cfg.port;
+        let allow_uncompressed = cfg.allow_uncompressed;
         let allowlist = relay_allowlist.clone();
         let limits = ws_limits.clone();
         tokio::spawn(async move {
-            let allow_uncompressed = cli.allow_uncompressed;
-            if let Err(e) = server::run(output_dir, port, allow_uncompressed, allowlist, limits).await {
+            if let Err(e) =
+                server::run(data_dir, port, allow_uncompressed, allowlist, limits).await
+            {
                 tracing::error!("HTTP server failed: {:#}", e);
             }
         });
     }
 
     // Load stores from previous run
-    let mut stores = store::Stores::load(&cli.output_dir, &SystemTime::now())?;
+    let mut stores = store::Stores::load(&cfg.data_dir, &SystemTime::now())?;
 
     tracing::info!("bootstrapping TorClient...");
-    let config = TorClientConfig::default();
-    let client = TorClient::create_bootstrapped(config)
+    let tor_config = TorClientConfig::default();
+    let client = TorClient::create_bootstrapped(tor_config)
         .await
         .context("bootstrapping TorClient")?;
     tracing::info!("TorClient bootstrapped");
 
     loop {
-        match sync::sync_once(&client, &cli.output_dir, &mut stores, &relay_allowlist).await {
+        match sync::sync_once(&client, &cfg.data_dir, &mut stores, &relay_allowlist).await {
             Ok(Some(lifetime)) => {
-                if cli.once {
+                if once {
                     return Ok(());
                 }
                 let delay =
