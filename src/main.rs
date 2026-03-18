@@ -33,6 +33,22 @@ struct Cli {
     /// Serve uncompressed /bootstrap.zip (off by default; production should use /bootstrap.zip.br)
     #[arg(long)]
     allow_uncompressed: bool,
+
+    /// Max concurrent WebSocket relay connections (0 = unlimited)
+    #[arg(long, default_value_t = 8192)]
+    ws_max_connections: usize,
+
+    /// Max WebSocket relay connections per client IP (0 = unlimited)
+    #[arg(long, default_value_t = 16)]
+    ws_per_ip_limit: usize,
+
+    /// WebSocket relay idle timeout in seconds
+    #[arg(long, default_value_t = 300)]
+    ws_idle_timeout: u64,
+
+    /// WebSocket relay max connection lifetime in seconds
+    #[arg(long, default_value_t = 3600)]
+    ws_max_lifetime: u64,
 }
 
 #[tokio::main]
@@ -49,15 +65,22 @@ async fn main() -> Result<()> {
         .with_context(|| format!("creating output dir {:?}", cli.output_dir))?;
 
     let relay_allowlist: ws_proxy::RelayAllowlist = Arc::new(RwLock::new(HashSet::new()));
+    let ws_limits = ws_proxy::WsLimits {
+        max_connections: cli.ws_max_connections,
+        per_ip_limit: cli.ws_per_ip_limit,
+        idle_timeout: Duration::from_secs(cli.ws_idle_timeout),
+        max_lifetime: Duration::from_secs(cli.ws_max_lifetime),
+    };
 
     // Start HTTP server (unless disabled with --port 0)
     if cli.port != 0 {
         let output_dir = cli.output_dir.clone();
         let port = cli.port;
         let allowlist = relay_allowlist.clone();
+        let limits = ws_limits.clone();
         tokio::spawn(async move {
             let allow_uncompressed = cli.allow_uncompressed;
-            if let Err(e) = server::run(output_dir, port, allow_uncompressed, allowlist).await {
+            if let Err(e) = server::run(output_dir, port, allow_uncompressed, allowlist, limits).await {
                 tracing::error!("HTTP server failed: {:#}", e);
             }
         });

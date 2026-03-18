@@ -15,12 +15,14 @@ use axum::routing::get;
 use axum::Router;
 use tower_http::cors::CorsLayer;
 
-use crate::ws_proxy::RelayAllowlist;
+use crate::ws_proxy::{ConnectionTracker, RelayAllowlist, WsLimits};
 
 #[derive(Clone)]
 pub struct AppState {
     output_dir: PathBuf,
     pub relay_allowlist: RelayAllowlist,
+    pub connection_tracker: ConnectionTracker,
+    pub ws_limits: WsLimits,
 }
 
 /// Start the HTTP server. Runs forever; call via `tokio::spawn`.
@@ -29,8 +31,14 @@ pub async fn run(
     port: u16,
     allow_uncompressed: bool,
     relay_allowlist: RelayAllowlist,
+    ws_limits: WsLimits,
 ) -> Result<()> {
-    let state = AppState { output_dir, relay_allowlist };
+    let state = AppState {
+        output_dir,
+        relay_allowlist,
+        connection_tracker: ConnectionTracker::new(),
+        ws_limits,
+    };
     let mut app = Router::new()
         .route("/", get(handle_index))
         .route("/bootstrap", get(handle_bootstrap_page))
@@ -46,7 +54,11 @@ pub async fn run(
     let addr = std::net::SocketAddr::from(([0, 0, 0, 0], port));
     tracing::info!("HTTP server listening on {}", addr);
     let listener = tokio::net::TcpListener::bind(addr).await?;
-    axum::serve(listener, app).await?;
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+    )
+    .await?;
     Ok(())
 }
 
