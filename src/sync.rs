@@ -16,6 +16,7 @@ use tor_circmgr::DirInfo;
 use tor_netdir::Timeliness;
 
 use crate::store::{AuthCertStore, Stores};
+use crate::ws_proxy::RelayAllowlist;
 
 /// Fetch consensus, parse it, fetch missing microdescs, write everything to disk.
 /// Returns the consensus lifetime for scheduling the next sync.
@@ -26,6 +27,7 @@ pub async fn sync_once(
     client: &TorClient<tor_rtcompat::PreferredRuntime>,
     output_dir: &Path,
     stores: &mut Stores,
+    relay_allowlist: &RelayAllowlist,
 ) -> Result<Option<Lifetime>> {
     // --- Get a dedicated dir circuit for this sync cycle ---
     let netdir = client
@@ -124,6 +126,17 @@ pub async fn sync_once(
         humantime::format_rfc3339(lifetime.fresh_until()),
         humantime::format_rfc3339(lifetime.valid_until()),
     );
+
+    // --- Update relay allowlist for WS proxy ---
+    {
+        let addrs: std::collections::HashSet<std::net::SocketAddr> = consensus
+            .relays()
+            .iter()
+            .flat_map(|rs| rs.addrs())
+            .collect();
+        tracing::info!("relay allowlist: {} addresses", addrs.len());
+        *relay_allowlist.write().unwrap_or_else(|e| e.into_inner()) = addrs;
+    }
 
     // --- Extract microdesc digests and diff against store ---
     let digests: Vec<_> = consensus

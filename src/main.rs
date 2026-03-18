@@ -2,8 +2,11 @@ mod dir;
 mod server;
 mod store;
 mod sync;
+mod ws_proxy;
 
+use std::collections::HashSet;
 use std::path::PathBuf;
+use std::sync::{Arc, RwLock};
 use std::time::{Duration, SystemTime};
 
 use anyhow::{Context, Result};
@@ -45,13 +48,16 @@ async fn main() -> Result<()> {
     std::fs::create_dir_all(&cli.output_dir)
         .with_context(|| format!("creating output dir {:?}", cli.output_dir))?;
 
+    let relay_allowlist: ws_proxy::RelayAllowlist = Arc::new(RwLock::new(HashSet::new()));
+
     // Start HTTP server (unless disabled with --port 0)
     if cli.port != 0 {
         let output_dir = cli.output_dir.clone();
         let port = cli.port;
+        let allowlist = relay_allowlist.clone();
         tokio::spawn(async move {
             let allow_uncompressed = cli.allow_uncompressed;
-            if let Err(e) = server::run(output_dir, port, allow_uncompressed).await {
+            if let Err(e) = server::run(output_dir, port, allow_uncompressed, allowlist).await {
                 tracing::error!("HTTP server failed: {:#}", e);
             }
         });
@@ -68,7 +74,7 @@ async fn main() -> Result<()> {
     tracing::info!("TorClient bootstrapped");
 
     loop {
-        match sync::sync_once(&client, &cli.output_dir, &mut stores).await {
+        match sync::sync_once(&client, &cli.output_dir, &mut stores, &relay_allowlist).await {
             Ok(Some(lifetime)) => {
                 if cli.once {
                     return Ok(());

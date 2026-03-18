@@ -15,20 +15,29 @@ use axum::routing::get;
 use axum::Router;
 use tower_http::cors::CorsLayer;
 
+use crate::ws_proxy::RelayAllowlist;
+
 #[derive(Clone)]
-struct AppState {
+pub struct AppState {
     output_dir: PathBuf,
+    pub relay_allowlist: RelayAllowlist,
 }
 
 /// Start the HTTP server. Runs forever; call via `tokio::spawn`.
-pub async fn run(output_dir: PathBuf, port: u16, allow_uncompressed: bool) -> Result<()> {
-    let state = AppState { output_dir };
+pub async fn run(
+    output_dir: PathBuf,
+    port: u16,
+    allow_uncompressed: bool,
+    relay_allowlist: RelayAllowlist,
+) -> Result<()> {
+    let state = AppState { output_dir, relay_allowlist };
     let mut app = Router::new()
         .route("/", get(handle_index))
         .route("/bootstrap", get(handle_bootstrap_page))
         .route("/torJsGateway.js", get(handle_js))
         .route("/metadata.json", get(handle_metadata))
-        .route("/bootstrap.zip.br", get(handle_bootstrap_zip_br));
+        .route("/bootstrap.zip.br", get(handle_bootstrap_zip_br))
+        .route("/socket/{target}", get(crate::ws_proxy::handle_socket));
     if allow_uncompressed {
         app = app.route("/bootstrap.zip", get(handle_bootstrap_zip));
     }
