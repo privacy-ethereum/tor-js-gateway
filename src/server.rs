@@ -4,7 +4,8 @@ use std::path::PathBuf;
 
 /// Web UI files, embedded at compile time.
 const INDEX_HTML: &str = include_str!("../web/index.html");
-const TOR_FAST_BOOTSTRAP_JS: &str = include_str!("../web/torFastBootstrap.js");
+const BOOTSTRAP_HTML: &str = include_str!("../web/bootstrap.html");
+const TOR_JS_GATEWAY_JS: &str = include_str!("../web/torJsGateway.js");
 
 use anyhow::Result;
 use axum::extract::State;
@@ -24,7 +25,8 @@ pub async fn run(output_dir: PathBuf, port: u16, allow_uncompressed: bool) -> Re
     let state = AppState { output_dir };
     let mut app = Router::new()
         .route("/", get(handle_index))
-        .route("/torFastBootstrap.js", get(handle_js))
+        .route("/bootstrap", get(handle_bootstrap_page))
+        .route("/torJsGateway.js", get(handle_js))
         .route("/metadata.json", get(handle_metadata))
         .route("/bootstrap.zip.br", get(handle_bootstrap_zip_br));
     if allow_uncompressed {
@@ -149,12 +151,22 @@ async fn handle_index() -> Response {
         .into_response()
 }
 
-/// GET /torFastBootstrap.js
+/// GET /bootstrap — bootstrap inspector UI.
+async fn handle_bootstrap_page() -> Response {
+    (
+        StatusCode::OK,
+        [(header::CONTENT_TYPE, "text/html; charset=utf-8")],
+        BOOTSTRAP_HTML,
+    )
+        .into_response()
+}
+
+/// GET /torJsGateway.js
 async fn handle_js() -> Response {
     (
         StatusCode::OK,
         [(header::CONTENT_TYPE, "text/javascript; charset=utf-8")],
-        TOR_FAST_BOOTSTRAP_JS,
+        TOR_JS_GATEWAY_JS,
     )
         .into_response()
 }

@@ -1,4 +1,4 @@
-# tor-fast-bootstrap
+# tor-js-gateway
 
 Long-running Tor directory cache daemon that syncs consensus documents, authority certificates, and microdescriptors directly from the Tor network using the directory protocol. Serves a pre-built bootstrap archive over HTTP for fast client bootstrapping.
 
@@ -28,10 +28,10 @@ cargo build --release
 
 ```
 # needs a decent amount of memory
-docker build --network=host -t tor-fast-bootstrap .
+docker build --network=host -t tor-js-gateway .
 
 # can run on a small machine, but requires transfer from build server
-docker run --network=host tor-fast-bootstrap
+docker run --network=host tor-js-gateway
 ```
 
 For production, run detached with restart policy and log retention:
@@ -39,8 +39,8 @@ For production, run detached with restart policy and log retention:
 ```
 docker run -d --restart unless-stopped \
   --log-opt max-size=10m --log-opt max-file=3 \
-  --network=host --name tor-fast-bootstrap \
-  tor-fast-bootstrap
+  --network=host --name tor-js-gateway \
+  tor-js-gateway
 ```
 
 `--network=host` is needed at build time so the builder can fetch crates, and at run time so the daemon can reach Tor directory authorities. If your Docker bridge network has working outbound connectivity, you can use `-p 42298:42298` instead of `--network=host` at run time.
@@ -48,7 +48,7 @@ docker run -d --restart unless-stopped \
 ## Usage
 
 ```
-tor-fast-bootstrap --output-dir ./data
+tor-js-gateway --output-dir ./data
 ```
 
 ### CLI flags
@@ -65,7 +65,7 @@ tor-fast-bootstrap --output-dir ./data
 Set `RUST_LOG` to control log verbosity (default: `info`). Example:
 
 ```
-RUST_LOG=debug tor-fast-bootstrap -o ./data
+RUST_LOG=debug tor-js-gateway -o ./data
 ```
 
 ## Web UI
@@ -80,7 +80,7 @@ Navigate to `http://localhost:42298/` to open the built-in web interface. Click 
 | `/metadata.json` | `application/json` | Sync metadata (brotli/gzip/identity) |
 | `/bootstrap.zip` | `application/zip` | Bootstrap archive (brotli/gzip/identity) |
 | `/bootstrap.zip.br` | `application/zip` or `application/octet-stream` | Brotli archive — transparent decoding if client accepts `br`, raw bytes otherwise |
-| `/torFastBootstrap.js` | `text/javascript` | ES module: download, decompress, and parse bootstrap archives |
+| `/torJsGateway.js` | `text/javascript` | ES module: download, decompress, and parse bootstrap archives |
 
 Data endpoints return `503 Service Unavailable` before the first successful sync.
 

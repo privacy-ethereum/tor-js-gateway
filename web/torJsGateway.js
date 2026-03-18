@@ -1,12 +1,12 @@
 /**
- * tor-fast-bootstrap client library.
+ * tor-js-gateway client library.
  *
  * All functions accept an optional onEvent callback for instrumentation.
  * Events are plain objects with a `type` string and relevant data fields.
  */
 
 /**
- * Download bootstrap.zip from a tor-fast-bootstrap server.
+ * Download bootstrap.zip from a tor-js-gateway server.
  *
  * Events emitted:
  * - { type: "fetch-start" }

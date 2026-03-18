@@ -1,4 +1,4 @@
-# Build: docker build --network=host -t tor-fast-bootstrap .
+# Build: docker build --network=host -t tor-js-gateway .
 FROM rust:1.89-bookworm AS builder
 
 WORKDIR /src
@@ -12,9 +12,9 @@ FROM debian:bookworm-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates libsqlite3-0 && rm -rf /var/lib/apt/lists/*
 
-COPY --from=builder /src/target/release/tor-fast-bootstrap /usr/local/bin/
+COPY --from=builder /src/target/release/tor-js-gateway /usr/local/bin/
 
 EXPOSE 42298
 VOLUME /data
 
-ENTRYPOINT ["tor-fast-bootstrap", "--output-dir", "/data"]
+ENTRYPOINT ["tor-js-gateway", "--output-dir", "/data"]

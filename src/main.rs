@@ -12,7 +12,7 @@ use clap::Parser;
 use arti_client::{TorClient, TorClientConfig};
 
 #[derive(Parser)]
-#[command(name = "tor-fast-bootstrap")]
+#[command(name = "tor-js-gateway")]
 #[command(about = "Long-running Tor directory cache — syncs like a relay")]
 struct Cli {
     /// Output directory for cached documents
