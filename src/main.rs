@@ -4,6 +4,7 @@ mod server;
 mod service;
 mod store;
 mod sync;
+mod webrtc_proxy;
 mod ws_proxy;
 
 use std::collections::HashSet;
@@ -82,11 +83,71 @@ async fn run(config_path: &PathBuf, once: bool) -> Result<()> {
         .with_context(|| format!("creating data dir {:?}", cfg.data_dir))?;
 
     let relay_allowlist: ws_proxy::RelayAllowlist = Arc::new(RwLock::new(HashSet::new()));
+
+    // Pre-populate relay allowlist from cached consensus so connections
+    // are accepted immediately, before the first sync completes.
+    {
+        let consensus_path = cfg.data_dir.join("consensus-microdesc.txt");
+        if let Ok(text) = std::fs::read_to_string(&consensus_path) {
+            let mut addrs = HashSet::new();
+            for line in text.lines() {
+                if let Some(rest) = line.strip_prefix("r ") {
+                    // r <nickname> <identity> <date> <time> <ip> <orport> <dirport>
+                    let parts: Vec<&str> = rest.split_whitespace().collect();
+                    if parts.len() >= 6 {
+                        if let (Ok(ip), Ok(port)) =
+                            (parts[4].parse::<std::net::IpAddr>(), parts[5].parse::<u16>())
+                        {
+                            if port != 0 {
+                                addrs.insert(std::net::SocketAddr::new(ip, port));
+                            }
+                        }
+                        // DirPort
+                        if parts.len() >= 7 {
+                            if let Ok(dport) = parts[6].parse::<u16>() {
+                                if dport != 0 {
+                                    if let Ok(ip) = parts[4].parse::<std::net::IpAddr>() {
+                                        addrs.insert(std::net::SocketAddr::new(ip, dport));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            if !addrs.is_empty() {
+                tracing::info!(
+                    "pre-populated relay allowlist with {} addresses from cached consensus",
+                    addrs.len()
+                );
+                *relay_allowlist.write().unwrap() = addrs;
+            }
+        }
+    }
+    let connection_tracker = ws_proxy::ConnectionTracker::new();
     let ws_limits = ws_proxy::WsLimits {
         max_connections: cfg.ws_max_connections,
         per_ip_limit: cfg.ws_per_ip_limit,
         idle_timeout: Duration::from_secs(cfg.ws_idle_timeout),
         max_lifetime: Duration::from_secs(cfg.ws_max_lifetime),
+    };
+
+    // Start WebRTC UDP loop if enabled.
+    let (webrtc_tx, webrtc_local_addr) = if cfg.webrtc_port != 0 {
+        let udp = tokio::net::UdpSocket::bind(("0.0.0.0", cfg.webrtc_port))
+            .await
+            .with_context(|| format!("binding WebRTC UDP port {}", cfg.webrtc_port))?;
+        let local_addr = udp.local_addr()?;
+        let (tx, rx) = tokio::sync::mpsc::channel::<webrtc_proxy::NewPeer>(256);
+        let allowlist = relay_allowlist.clone();
+        let tracker = connection_tracker.clone();
+        let limits = ws_limits.clone();
+        tokio::spawn(async move {
+            webrtc_proxy::run_udp_loop(udp, local_addr, rx, allowlist, tracker, limits).await;
+        });
+        (Some(tx), Some(local_addr))
+    } else {
+        (None, None)
     };
 
     // Start HTTP server (unless disabled with port: 0)
@@ -95,10 +156,13 @@ async fn run(config_path: &PathBuf, once: bool) -> Result<()> {
         let port = cfg.port;
         let allow_uncompressed = cfg.allow_uncompressed;
         let allowlist = relay_allowlist.clone();
+        let tracker = connection_tracker.clone();
         let limits = ws_limits.clone();
+        let rtc_tx = webrtc_tx.clone();
+        let rtc_addr = webrtc_local_addr;
         tokio::spawn(async move {
             if let Err(e) =
-                server::run(data_dir, port, allow_uncompressed, allowlist, limits).await
+                server::run(data_dir, port, allow_uncompressed, allowlist, tracker, limits, rtc_tx, rtc_addr).await
             {
                 tracing::error!("HTTP server failed: {:#}", e);
             }

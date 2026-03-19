@@ -64,7 +64,7 @@ impl ConnectionTracker {
     }
 
     /// Try to acquire a slot. Returns false if a limit would be exceeded.
-    fn acquire(&self, ip: IpAddr, limits: &WsLimits) -> bool {
+    pub(crate) fn acquire(&self, ip: IpAddr, limits: &WsLimits) -> bool {
         let current = self.total.load(Ordering::Relaxed);
         if current >= limits.max_connections {
             return false;
@@ -81,7 +81,7 @@ impl ConnectionTracker {
         true
     }
 
-    fn release(&self, ip: IpAddr) {
+    pub(crate) fn release(&self, ip: IpAddr) {
         self.total.fetch_sub(1, Ordering::Relaxed);
         let mut map = self.per_ip.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(count) = map.get_mut(&ip) {
@@ -94,7 +94,7 @@ impl ConnectionTracker {
 }
 
 /// Returns true if the IP is non-routable (loopback, private, link-local, etc.).
-fn is_local(ip: IpAddr) -> bool {
+pub(crate) fn is_local(ip: IpAddr) -> bool {
     match ip {
         IpAddr::V4(v4) => {
             v4.is_loopback()

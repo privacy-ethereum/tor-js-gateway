@@ -1,0 +1,787 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>tor-js-gateway &mdash; connect</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='14' fill='%231a1a2e' stroke='%237b68ee' stroke-width='2'/><path d='M16 6a10 10 0 0 1 0 20 10 10 0 0 1 0-20m0 3a7 7 0 0 1 0 14 7 7 0 0 1 0-14m0 3a4 4 0 0 1 0 8 4 4 0 0 1 0-8' fill='none' stroke='%237b68ee' stroke-width='1.5'/><circle cx='16' cy='16' r='1.5' fill='%237b68ee'/></svg>">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #1a1a2e;
+  --bg-card: #16213e;
+  --accent: #7b68ee;
+  --accent-hover: #9d8ffa;
+  --text: #e0e0e0;
+  --text-dim: #a0a0a0;
+  --text-muted: #6a6a8a;
+  --border: #2a2a4a;
+  --success: #4caf50;
+  --error: #e57373;
+  --warn: #ffb74d;
+  --mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
+  --sans: system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  line-height: 1.6;
+  min-height: 100vh;
+}
+
+a { color: var(--accent); text-decoration: none; }
+a:hover { color: var(--accent-hover); }
+
+header {
+  border-bottom: 1px solid var(--border);
+  padding: 1.5rem 2rem;
+}
+
+.header-inner {
+  max-width: 960px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+h1 {
+  font-size: 1.5rem;
+  font-weight: 600;
+  font-family: var(--mono);
+  letter-spacing: -0.02em;
+}
+
+.subtitle {
+  color: var(--text-dim);
+  font-size: 0.875rem;
+  margin-top: 0.15rem;
+}
+
+.nav-links {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  font-size: 0.875rem;
+}
+.nav-links a { color: var(--text-dim); }
+.nav-links a:hover { color: var(--text); }
+
+main {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 2rem;
+}
+
+/* Form area */
+.connect-form {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.connect-form h2 {
+  font-size: 1rem;
+  font-weight: 600;
+  margin-bottom: 1rem;
+}
+
+.form-row {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  margin-bottom: 0.75rem;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.form-group label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.form-group input, .form-group select {
+  font-family: var(--mono);
+  font-size: 0.85rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  outline: none;
+}
+
+.form-group input:focus, .form-group select:focus {
+  border-color: var(--accent);
+}
+
+.form-group input::placeholder { color: var(--text-muted); }
+
+#target-input { width: 280px; }
+
+.btn {
+  font-family: var(--sans);
+  font-size: 0.85rem;
+  font-weight: 600;
+  padding: 0.5rem 1.5rem;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s, transform 0.1s;
+  border: none;
+}
+.btn:hover:not(:disabled) { transform: translateY(-1px); }
+.btn:active:not(:disabled) { transform: translateY(0); }
+.btn:disabled { cursor: default; opacity: 0.5; }
+
+.btn-connect {
+  background: var(--accent);
+  color: #fff;
+}
+.btn-connect:hover:not(:disabled) { background: var(--accent-hover); }
+
+.btn-send {
+  background: #2a4a2a;
+  color: #81c784;
+  border: 1px solid #3a5a3a;
+}
+.btn-send:hover:not(:disabled) { background: #2a5a2a; }
+
+.btn-close {
+  background: #3a1a1a;
+  color: var(--error);
+  border: 1px solid #5a2a2a;
+}
+.btn-close:hover:not(:disabled) { background: #4a1a1a; }
+
+.btn-clear {
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  font-size: 0.75rem;
+  padding: 0.35rem 0.75rem;
+}
+.btn-clear:hover:not(:disabled) { color: var(--text-dim); border-color: var(--text-muted); }
+
+.hint {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-top: 0.25rem;
+}
+
+/* Relay picker */
+#relay-list {
+  display: none;
+  margin-top: 0.5rem;
+  max-height: 200px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+}
+
+#relay-list.visible { display: block; }
+
+.relay-option {
+  padding: 0.35rem 0.75rem;
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  color: var(--text-dim);
+  cursor: pointer;
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.relay-option:hover { background: rgba(123, 104, 238, 0.08); }
+.relay-option .relay-name { color: var(--text); font-weight: 600; min-width: 100px; }
+.relay-option .relay-addr { color: var(--text-dim); }
+.relay-option .relay-bw { color: var(--text-muted); margin-left: auto; font-size: 0.7rem; }
+
+/* Connection panel */
+.connection-panel {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1.5rem;
+  margin-bottom: 1rem;
+}
+
+.conn-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.conn-header h3 {
+  font-family: var(--mono);
+  font-size: 0.9rem;
+  font-weight: 600;
+  flex: 1;
+}
+
+.conn-badge {
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  font-weight: 600;
+}
+
+.conn-badge.ws { background: #1a2a3a; color: #64b5f6; }
+.conn-badge.rtc { background: #2a1a3a; color: #ce93d8; }
+
+.status-indicator {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-family: var(--mono);
+  font-size: 0.78rem;
+}
+
+.status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+
+.status-dot.connecting { background: var(--warn); animation: blink 1s ease-in-out infinite; }
+.status-dot.open { background: var(--success); box-shadow: 0 0 6px rgba(76, 175, 80, 0.5); }
+.status-dot.closed { background: var(--error); }
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+/* Send area */
+.send-area {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+  align-items: flex-end;
+}
+
+.send-area .form-group { flex: 1; }
+
+.send-area input {
+  width: 100%;
+  font-family: var(--mono);
+  font-size: 0.82rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  outline: none;
+}
+
+.send-area input:focus { border-color: var(--accent); }
+.send-area input::placeholder { color: var(--text-muted); }
+
+/* Log */
+.event-log {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  max-height: 400px;
+  overflow-y: auto;
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+.log-entry {
+  padding: 0.25rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  gap: 0.75rem;
+}
+
+.log-entry:last-child { border-bottom: none; }
+
+.log-ts {
+  color: var(--text-muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.log-dir {
+  font-weight: 700;
+  flex-shrink: 0;
+  width: 1.5em;
+  text-align: center;
+}
+
+.log-dir.out { color: #81c784; }
+.log-dir.in { color: #64b5f6; }
+.log-dir.sys { color: var(--warn); }
+.log-dir.err { color: var(--error); }
+
+.log-body {
+  color: var(--text-dim);
+  word-break: break-all;
+}
+
+/* Hex dump */
+.hex-line {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.hex-offset { color: var(--text-muted); }
+.hex-bytes { color: var(--text-dim); }
+.hex-ascii { color: var(--text-muted); }
+
+.log-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.log-controls label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  cursor: pointer;
+}
+
+.log-stats {
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+@media (max-width: 640px) {
+  .form-row { flex-direction: column; }
+  #target-input { width: 100%; }
+  main { padding: 1rem; }
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-inner">
+    <div>
+      <h1>tor-js-gateway</h1>
+      <p class="subtitle">Relay connection tester &mdash; WebSocket &amp; WebRTC</p>
+    </div>
+    <div class="nav-links">
+      <a href="/">Home</a>
+      <a href="/bootstrap">Bootstrap</a>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div class="connect-form">
+    <h2>Connect to a Tor relay</h2>
+    <div class="form-row">
+      <div class="form-group">
+        <label for="target-input">Target (ip:port)</label>
+        <input id="target-input" type="text" placeholder="128.31.0.39:9201" autocomplete="off" spellcheck="false">
+      </div>
+      <div class="form-group">
+        <label for="transport-select">Transport</label>
+        <select id="transport-select">
+          <option value="ws">WebSocket</option>
+          <option value="rtc">WebRTC</option>
+        </select>
+      </div>
+      <button id="connect-btn" class="btn btn-connect">Connect</button>
+    </div>
+    <div class="hint">
+      Enter a relay address from the consensus, or
+      <a href="#" id="pick-relay-link">pick from known relays</a>.
+      Only consensus-listed relay addresses are allowed.
+    </div>
+    <div id="relay-list"></div>
+  </div>
+
+  <div id="connections"></div>
+</main>
+
+<script type="module">
+import { connectRtc } from './torJsGateway.js';
+
+const connectionsEl = document.getElementById('connections');
+const targetInput = document.getElementById('target-input');
+const transportSelect = document.getElementById('transport-select');
+const connectBtn = document.getElementById('connect-btn');
+const pickRelayLink = document.getElementById('pick-relay-link');
+const relayListEl = document.getElementById('relay-list');
+
+let connId = 0;
+let rtcGateway = null; // shared WebRTC peer connection
+let relays = null; // cached relay list from metadata
+
+// --- Relay picker ---
+
+async function loadRelays() {
+  if (relays) return relays;
+  try {
+    const res = await fetch('./metadata.json');
+    if (!res.ok) return null;
+    const meta = await res.json();
+    // We don't have full relay list from metadata, but we can try bootstrap
+    // For now just return null — the picker will show a message
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+pickRelayLink.addEventListener('click', async (e) => {
+  e.preventDefault();
+  if (relayListEl.classList.contains('visible')) {
+    relayListEl.classList.remove('visible');
+    return;
+  }
+
+  relayListEl.innerHTML = '<div class="relay-option" style="color:var(--text-muted);cursor:default;">Loading relays from bootstrap data...</div>';
+  relayListEl.classList.add('visible');
+
+  try {
+    // Fetch and parse bootstrap to get relay addresses
+    const { parseBootstrapZip, smartBootstrapDownload } = await import('./torJsGateway.js');
+    const zip = await smartBootstrapDownload('./bootstrap.zip.br');
+    const { consensus } = parseBootstrapZip(zip);
+
+    const relayItems = [];
+    const lines = consensus.split('\n');
+    for (let i = 0; i < lines.length; i++) {
+      if (!lines[i].startsWith('r ')) continue;
+      const parts = lines[i].split(' ');
+      const nickname = parts[1] || '?';
+      const ip = parts[5] || '?';
+      const port = parts[6] || '0';
+      // Look ahead for bandwidth
+      let bw = 0;
+      for (let j = i + 1; j < lines.length && !lines[j].startsWith('r ') && lines[j] !== 'directory-footer'; j++) {
+        if (lines[j].startsWith('w ')) {
+          const m = lines[j].match(/Bandwidth=(\d+)/);
+          if (m) bw = parseInt(m[1], 10);
+        }
+      }
+      relayItems.push({ nickname, addr: `${ip}:${port}`, bw });
+    }
+
+    // Sort by bandwidth descending, show top 50
+    relayItems.sort((a, b) => b.bw - a.bw);
+    relayListEl.innerHTML = '';
+
+    const shown = relayItems.slice(0, 50);
+    for (const r of shown) {
+      const div = document.createElement('div');
+      div.className = 'relay-option';
+      div.innerHTML =
+        `<span class="relay-name">${esc(r.nickname)}</span>` +
+        `<span class="relay-addr">${esc(r.addr)}</span>` +
+        `<span class="relay-bw">${r.bw >= 1000 ? (r.bw / 1000).toFixed(0) + 'k' : r.bw}</span>`;
+      div.addEventListener('click', () => {
+        targetInput.value = r.addr;
+        relayListEl.classList.remove('visible');
+      });
+      relayListEl.appendChild(div);
+    }
+  } catch (err) {
+    relayListEl.innerHTML = `<div class="relay-option" style="color:var(--error);cursor:default;">Failed to load relays: ${esc(String(err))}</div>`;
+  }
+});
+
+// --- Hex dump ---
+
+function hexDump(bytes, maxBytes) {
+  const limited = maxBytes && bytes.length > maxBytes;
+  const data = limited ? bytes.slice(0, maxBytes) : bytes;
+  const lines = [];
+  for (let i = 0; i < data.length; i += 16) {
+    const chunk = data.slice(i, i + 16);
+    const offset = i.toString(16).padStart(4, '0');
+    const hex = Array.from(chunk, b => b.toString(16).padStart(2, '0')).join(' ');
+    const ascii = Array.from(chunk, b => b >= 0x20 && b < 0x7f ? String.fromCharCode(b) : '.').join('');
+    lines.push(`<span class="hex-line"><span class="hex-offset">${offset}</span> <span class="hex-bytes">${hex.padEnd(48)}</span> <span class="hex-ascii">${esc(ascii)}</span></span>`);
+  }
+  if (limited) {
+    lines.push(`<span style="color:var(--text-muted);">... (${bytes.length - maxBytes} more bytes)</span>`);
+  }
+  return lines.join('\n');
+}
+
+function esc(s) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// --- Connection panel ---
+
+function createConnectionPanel(target, transport) {
+  const id = ++connId;
+  const panel = document.createElement('div');
+  panel.className = 'connection-panel';
+  panel.innerHTML = `
+    <div class="conn-header">
+      <span class="conn-badge ${transport}">${transport.toUpperCase()}</span>
+      <h3>${esc(target)}</h3>
+      <div class="status-indicator">
+        <span class="status-dot connecting" id="dot-${id}"></span>
+        <span id="status-${id}">Connecting...</span>
+      </div>
+      <button class="btn btn-close" id="close-${id}">Close</button>
+    </div>
+    <div class="send-area">
+      <div class="form-group">
+        <input id="send-${id}" type="text" placeholder="Hex bytes to send (e.g. 00 07 00 03 ...)" spellcheck="false">
+      </div>
+      <button class="btn btn-send" id="sendbtn-${id}">Send</button>
+    </div>
+    <div class="log-controls">
+      <label><input type="checkbox" id="autoscroll-${id}" checked> Auto-scroll</label>
+      <div>
+        <span class="log-stats" id="stats-${id}">0 sent, 0 received</span>
+        <button class="btn btn-clear" id="clear-${id}">Clear</button>
+      </div>
+    </div>
+    <div class="event-log" id="log-${id}"></div>
+  `;
+  connectionsEl.prepend(panel);
+
+  const logEl = panel.querySelector(`#log-${id}`);
+  const dotEl = panel.querySelector(`#dot-${id}`);
+  const statusEl = panel.querySelector(`#status-${id}`);
+  const sendInput = panel.querySelector(`#send-${id}`);
+  const sendBtn = panel.querySelector(`#sendbtn-${id}`);
+  const closeBtn = panel.querySelector(`#close-${id}`);
+  const autoScrollCheck = panel.querySelector(`#autoscroll-${id}`);
+  const clearBtn = panel.querySelector(`#clear-${id}`);
+  const statsEl = panel.querySelector(`#stats-${id}`);
+
+  let bytesSent = 0;
+  let bytesRecv = 0;
+  let t0 = performance.now();
+
+  function ts() {
+    return ((performance.now() - t0) / 1000).toFixed(3) + 's';
+  }
+
+  function updateStats() {
+    statsEl.textContent = `${fmtBytes(bytesSent)} sent, ${fmtBytes(bytesRecv)} received`;
+  }
+
+  function fmtBytes(n) {
+    if (n >= 1048576) return (n / 1048576).toFixed(1) + ' MB';
+    if (n >= 1024) return (n / 1024).toFixed(1) + ' KB';
+    return n + ' B';
+  }
+
+  function addLog(dir, body, isHex) {
+    const entry = document.createElement('div');
+    entry.className = 'log-entry';
+    const dirClass = dir === '>' ? 'out' : dir === '<' ? 'in' : dir === '!' ? 'err' : 'sys';
+    entry.innerHTML =
+      `<span class="log-ts">${ts()}</span>` +
+      `<span class="log-dir ${dirClass}">${esc(dir)}</span>` +
+      `<span class="log-body">${isHex ? body : esc(body)}</span>`;
+    logEl.appendChild(entry);
+    if (autoScrollCheck.checked) {
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+  }
+
+  clearBtn.addEventListener('click', () => {
+    logEl.innerHTML = '';
+  });
+
+  function setStatus(state, text) {
+    dotEl.className = `status-dot ${state}`;
+    statusEl.textContent = text;
+  }
+
+  function parseSendInput(raw) {
+    const hex = raw.replace(/[^0-9a-fA-F]/g, '');
+    if (hex.length === 0 || hex.length % 2 !== 0) return null;
+    const bytes = new Uint8Array(hex.length / 2);
+    for (let i = 0; i < bytes.length; i++) {
+      bytes[i] = parseInt(hex.substr(i * 2, 2), 16);
+    }
+    return bytes;
+  }
+
+  // Return control interface
+  return {
+    addLog,
+    setStatus,
+    sendInput,
+    sendBtn,
+    closeBtn,
+    parseSendInput,
+    onSent(n) { bytesSent += n; updateStats(); },
+    onRecv(n) { bytesRecv += n; updateStats(); },
+  };
+}
+
+// --- WebSocket connection ---
+
+function connectWebSocket(target) {
+  const ctrl = createConnectionPanel(target, 'ws');
+  const wsOrigin = location.origin.replace(/^http/, 'ws');
+  const url = `${wsOrigin}/socket/${target}`;
+
+  ctrl.addLog('*', `Connecting to ${url}...`);
+  const ws = new WebSocket(url);
+  ws.binaryType = 'arraybuffer';
+
+  ws.onopen = () => {
+    ctrl.setStatus('open', 'Connected');
+    ctrl.addLog('*', 'Connection established');
+  };
+
+  ws.onclose = (ev) => {
+    ctrl.setStatus('closed', `Closed (${ev.code})`);
+    ctrl.addLog('*', `Connection closed: code=${ev.code} reason=${ev.reason || '(none)'}`);
+    ctrl.sendBtn.disabled = true;
+  };
+
+  ws.onerror = () => {
+    ctrl.addLog('!', 'WebSocket error');
+  };
+
+  ws.onmessage = (ev) => {
+    const data = new Uint8Array(ev.data);
+    ctrl.onRecv(data.length);
+    ctrl.addLog('<', hexDump(data, 256), true);
+  };
+
+  ctrl.sendBtn.addEventListener('click', () => {
+    const bytes = ctrl.parseSendInput(ctrl.sendInput.value);
+    if (!bytes) {
+      ctrl.addLog('!', 'Invalid hex input');
+      return;
+    }
+    try {
+      ws.send(bytes);
+      ctrl.onSent(bytes.length);
+      ctrl.addLog('>', hexDump(bytes, 256), true);
+      ctrl.sendInput.value = '';
+    } catch (e) {
+      ctrl.addLog('!', `Send error: ${e.message}`);
+    }
+  });
+
+  ctrl.sendInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') ctrl.sendBtn.click();
+  });
+
+  ctrl.closeBtn.addEventListener('click', () => {
+    ws.close();
+  });
+}
+
+// --- WebRTC connection ---
+
+async function connectWebRTC(target) {
+  const ctrl = createConnectionPanel(target, 'rtc');
+
+  try {
+    // Establish or reuse RTCPeerConnection
+    if (!rtcGateway || !rtcGateway.connected) {
+      ctrl.addLog('*', 'Establishing WebRTC peer connection...');
+      rtcGateway = await connectRtc(location.origin, (ev) => {
+        ctrl.addLog('*', `${ev.type}`);
+      });
+      ctrl.addLog('*', 'WebRTC peer connection established');
+    } else {
+      ctrl.addLog('*', 'Reusing existing WebRTC peer connection');
+    }
+
+    ctrl.addLog('*', `Opening data channel to ${target}...`);
+    const sock = await rtcGateway.openSocket(target);
+    ctrl.setStatus('open', 'Connected');
+    ctrl.addLog('*', 'Data channel open');
+
+    sock.onmessage = (data) => {
+      ctrl.onRecv(data.length);
+      ctrl.addLog('<', hexDump(data, 256), true);
+    };
+
+    sock.onclose = () => {
+      ctrl.setStatus('closed', 'Closed');
+      ctrl.addLog('*', 'Data channel closed');
+      ctrl.sendBtn.disabled = true;
+    };
+
+    ctrl.sendBtn.addEventListener('click', () => {
+      const bytes = ctrl.parseSendInput(ctrl.sendInput.value);
+      if (!bytes) {
+        ctrl.addLog('!', 'Invalid hex input');
+        return;
+      }
+      try {
+        sock.send(bytes);
+        ctrl.onSent(bytes.length);
+        ctrl.addLog('>', hexDump(bytes, 256), true);
+        ctrl.sendInput.value = '';
+      } catch (e) {
+        ctrl.addLog('!', `Send error: ${e.message}`);
+      }
+    });
+
+    ctrl.sendInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') ctrl.sendBtn.click();
+    });
+
+    ctrl.closeBtn.addEventListener('click', () => {
+      sock.close();
+    });
+
+  } catch (err) {
+    ctrl.setStatus('closed', 'Failed');
+    ctrl.addLog('!', `Connection failed: ${err.message}`);
+    ctrl.sendBtn.disabled = true;
+  }
+}
+
+// --- Main connect handler ---
+
+connectBtn.addEventListener('click', () => {
+  const target = targetInput.value.trim();
+  if (!target) return;
+  const transport = transportSelect.value;
+
+  if (transport === 'ws') {
+    connectWebSocket(target);
+  } else {
+    connectWebRTC(target);
+  }
+});
+
+targetInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') connectBtn.click();
+});
+
+// Pre-populate from URL hash
+if (location.hash) {
+  const params = new URLSearchParams(location.hash.slice(1));
+  if (params.get('target')) targetInput.value = params.get('target');
+  if (params.get('transport')) transportSelect.value = params.get('transport');
+}
+</script>
+
+</body>
+</html>

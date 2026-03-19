@@ -30,7 +30,7 @@ rand = "0.9"
 humantime = "2"
 futures = "0.3"
 async-compression = { version = "0.4", features = ["futures-io", "zlib", "xz", "zstd"] }
-base64ct = { version = "1.8", features = ["alloc"] }
+base64ct = { version = "1", features = ["alloc"] }
 sha3 = "0.10"
 digest = "0.10"
 hex = "0.4"
@@ -39,3 +39,4 @@ brotli = "8"
 flate2 = "1"
 axum = { version = "0.8", features = ["ws"] }
 tower-http = { version = "0.6", features = ["cors"] }
+str0m = { git = "https://github.com/algesten/str0m.git", rev = "2436c567" }

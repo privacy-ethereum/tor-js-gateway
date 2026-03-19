@@ -5,6 +5,7 @@ use std::path::PathBuf;
 /// Web UI files, embedded at compile time.
 const INDEX_HTML: &str = include_str!("../web/index.html");
 const BOOTSTRAP_HTML: &str = include_str!("../web/bootstrap.html");
+const CONNECT_HTML: &str = include_str!("../web/connect.html");
 const TOR_JS_GATEWAY_JS: &str = include_str!("../web/torJsGateway.js");
 
 use anyhow::Result;
@@ -15,6 +16,7 @@ use axum::routing::get;
 use axum::Router;
 use tower_http::cors::CorsLayer;
 
+use crate::webrtc_proxy::NewPeer;
 use crate::ws_proxy::{ConnectionTracker, RelayAllowlist, WsLimits};
 
 #[derive(Clone)]
@@ -23,6 +25,8 @@ pub struct AppState {
     pub relay_allowlist: RelayAllowlist,
     pub connection_tracker: ConnectionTracker,
     pub ws_limits: WsLimits,
+    pub webrtc_tx: Option<tokio::sync::mpsc::Sender<NewPeer>>,
+    pub webrtc_local_addr: Option<std::net::SocketAddr>,
 }
 
 /// Start the HTTP server. Runs forever; call via `tokio::spawn`.
@@ -31,21 +35,28 @@ pub async fn run(
     port: u16,
     allow_uncompressed: bool,
     relay_allowlist: RelayAllowlist,
+    connection_tracker: ConnectionTracker,
     ws_limits: WsLimits,
+    webrtc_tx: Option<tokio::sync::mpsc::Sender<NewPeer>>,
+    webrtc_local_addr: Option<std::net::SocketAddr>,
 ) -> Result<()> {
     let state = AppState {
         output_dir,
         relay_allowlist,
-        connection_tracker: ConnectionTracker::new(),
+        connection_tracker,
         ws_limits,
+        webrtc_tx,
+        webrtc_local_addr,
     };
     let mut app = Router::new()
         .route("/", get(handle_index))
         .route("/bootstrap", get(handle_bootstrap_page))
+        .route("/connect", get(handle_connect_page))
         .route("/torJsGateway.js", get(handle_js))
         .route("/metadata.json", get(handle_metadata))
         .route("/bootstrap.zip.br", get(handle_bootstrap_zip_br))
-        .route("/socket/{target}", get(crate::ws_proxy::handle_socket));
+        .route("/socket/{target}", get(crate::ws_proxy::handle_socket))
+        .route("/rtc/connect", axum::routing::post(crate::webrtc_proxy::handle_rtc_connect));
     if allow_uncompressed {
         app = app.route("/bootstrap.zip", get(handle_bootstrap_zip));
     }
@@ -178,6 +189,16 @@ async fn handle_bootstrap_page() -> Response {
         StatusCode::OK,
         [(header::CONTENT_TYPE, "text/html; charset=utf-8")],
         BOOTSTRAP_HTML,
+    )
+        .into_response()
+}
+
+/// GET /connect — relay connection tester.
+async fn handle_connect_page() -> Response {
+    (
+        StatusCode::OK,
+        [(header::CONTENT_TYPE, "text/html; charset=utf-8")],
+        CONNECT_HTML,
     )
         .into_response()
 }

@@ -47,6 +47,9 @@ pub struct Config {
 
     /// WebSocket relay max connection lifetime in seconds
     pub ws_max_lifetime: u64,
+
+    /// UDP port for WebRTC data channel relay (0 to disable)
+    pub webrtc_port: u16,
 }
 
 impl Default for Config {
@@ -59,6 +62,7 @@ impl Default for Config {
             ws_per_ip_limit: 16,
             ws_idle_timeout: 300,
             ws_max_lifetime: 3600,
+            webrtc_port: 42299,
         }
     }
 }
@@ -89,6 +93,9 @@ impl Config {
 
   // WebSocket relay max connection lifetime in seconds
   "ws_max_lifetime": {},
+
+  // UDP port for WebRTC data channel relay (0 to disable)
+  "webrtc_port": {},
 }}"#,
             serde_json::to_string(&cfg.data_dir).unwrap(),
             cfg.port,
@@ -97,6 +104,7 @@ impl Config {
             cfg.ws_per_ip_limit,
             cfg.ws_idle_timeout,
             cfg.ws_max_lifetime,
+            cfg.webrtc_port,
         )
     }
 

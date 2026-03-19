@@ -295,6 +295,159 @@ async function readResponseWithProgress(res, total, onEvent, extra) {
   return result;
 }
 
+/**
+ * Create a WebRTC-based relay connection to the gateway.
+ *
+ * Returns a GatewayConnection that can open data channels to Tor relays.
+ * Each data channel acts like a TCP socket to the target relay.
+ *
+ * Events emitted:
+ * - { type: "rtc-signaling" }
+ * - { type: "rtc-connected" }
+ * - { type: "rtc-disconnected" }
+ *
+ * @param {string} gatewayUrl - The gateway origin (e.g. "https://example.com").
+ * @param {function} [onEvent] - Optional event callback.
+ * @returns {Promise<GatewayConnection>}
+ */
+export async function connectRtc(gatewayUrl, onEvent) {
+  const pc = new RTCPeerConnection();
+
+  // We need at least one data channel before creating an offer,
+  // otherwise the SDP won't include a SCTP transport.
+  const initChannel = pc.createDataChannel("_init");
+  initChannel.onopen = () => initChannel.close();
+
+  const offer = await pc.createOffer();
+  await pc.setLocalDescription(offer);
+
+  // Wait for ICE gathering to complete so we send all candidates in one shot.
+  await new Promise((resolve) => {
+    if (pc.iceGatheringState === "complete") return resolve();
+    pc.addEventListener("icegatheringstatechange", () => {
+      if (pc.iceGatheringState === "complete") resolve();
+    });
+  });
+
+  onEvent?.({ type: "rtc-signaling" });
+
+  const res = await fetch(`${gatewayUrl}/rtc/connect`, {
+    method: "POST",
+    body: JSON.stringify(pc.localDescription),
+  });
+
+  if (!res.ok) {
+    pc.close();
+    throw new Error(`rtc signaling failed: ${res.status} ${await res.text()}`);
+  }
+
+  const answer = await res.json();
+  await pc.setRemoteDescription(answer);
+
+  // Wait for the connection to establish.
+  await new Promise((resolve, reject) => {
+    if (pc.connectionState === "connected") return resolve();
+    pc.addEventListener("connectionstatechange", () => {
+      if (pc.connectionState === "connected") resolve();
+      if (pc.connectionState === "failed") reject(new Error("WebRTC connection failed"));
+    });
+  });
+
+  onEvent?.({ type: "rtc-connected" });
+
+  const conn = new GatewayConnection(pc, onEvent);
+  return conn;
+}
+
+/**
+ * A WebRTC connection to a tor-js-gateway, capable of opening
+ * data channels to Tor relays.
+ */
+export class GatewayConnection {
+  /** @type {RTCPeerConnection} */
+  #pc;
+  #onEvent;
+
+  constructor(pc, onEvent) {
+    this.#pc = pc;
+    this.#onEvent = onEvent;
+
+    pc.addEventListener("connectionstatechange", () => {
+      if (pc.connectionState === "disconnected" || pc.connectionState === "closed") {
+        onEvent?.({ type: "rtc-disconnected" });
+      }
+    });
+  }
+
+  /**
+   * Open a relay socket to the given target address.
+   *
+   * @param {string} target - The relay address as "ip:port".
+   * @returns {Promise<RelaySocket>}
+   */
+  async openSocket(target) {
+    const dc = this.#pc.createDataChannel(target);
+    dc.binaryType = "arraybuffer";
+
+    await new Promise((resolve, reject) => {
+      dc.onopen = resolve;
+      dc.onerror = (e) => reject(new Error(`data channel error: ${e.error?.message || e}`));
+    });
+
+    return new RelaySocket(dc);
+  }
+
+  /** Close the peer connection and all data channels. */
+  close() {
+    this.#pc.close();
+  }
+
+  /** Whether the underlying peer connection is still alive. */
+  get connected() {
+    return this.#pc.connectionState === "connected";
+  }
+}
+
+/**
+ * A single relay socket backed by a WebRTC data channel.
+ * Provides a simple send/receive interface matching the WebSocket pattern.
+ */
+export class RelaySocket {
+  /** @type {RTCDataChannel} */
+  #dc;
+  /** @type {function|null} */
+  onmessage = null;
+  /** @type {function|null} */
+  onclose = null;
+
+  constructor(dc) {
+    this.#dc = dc;
+
+    dc.onmessage = (ev) => {
+      this.onmessage?.(new Uint8Array(ev.data));
+    };
+
+    dc.onclose = () => {
+      this.onclose?.();
+    };
+  }
+
+  /** Send binary data to the relay. */
+  send(data) {
+    this.#dc.send(data);
+  }
+
+  /** Close the data channel (and the corresponding TCP connection on the gateway). */
+  close() {
+    this.#dc.close();
+  }
+
+  /** The data channel's ready state. */
+  get readyState() {
+    return this.#dc.readyState;
+  }
+}
+
 function splitDocuments(blob, marker) {
   if (!blob) return [];
   const docs = [];
