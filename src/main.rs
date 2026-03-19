@@ -70,6 +70,18 @@ async fn main() -> Result<()> {
     }
 }
 
+/// Check if the system has IPv6 internet connectivity by looking for a default route.
+fn detect_ipv6() -> bool {
+    let Ok(output) = std::process::Command::new("ip")
+        .args(["-6", "route", "show", "default"])
+        .output()
+    else {
+        return false;
+    };
+    let text = String::from_utf8_lossy(&output.stdout);
+    text.contains("default")
+}
+
 async fn run(config_path: &PathBuf, once: bool) -> Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
@@ -132,6 +144,14 @@ async fn run(config_path: &PathBuf, once: bool) -> Result<()> {
         max_lifetime: Duration::from_secs(cfg.ws_max_lifetime),
     };
 
+    // Detect IPv6 connectivity by checking for a default route.
+    let has_ipv6 = detect_ipv6();
+    if has_ipv6 {
+        tracing::info!("IPv6 connectivity detected");
+    } else {
+        tracing::info!("no IPv6 connectivity — IPv6 relay targets will be rejected");
+    }
+
     // Start WebRTC UDP loop if enabled.
     let (webrtc_tx, webrtc_local_addr) = if cfg.webrtc_port != 0 {
         let udp = tokio::net::UdpSocket::bind(("0.0.0.0", cfg.webrtc_port))
@@ -142,8 +162,9 @@ async fn run(config_path: &PathBuf, once: bool) -> Result<()> {
         let allowlist = relay_allowlist.clone();
         let tracker = connection_tracker.clone();
         let limits = ws_limits.clone();
+        let ipv6 = has_ipv6;
         tokio::spawn(async move {
-            webrtc_proxy::run_udp_loop(udp, local_addr, rx, allowlist, tracker, limits).await;
+            webrtc_proxy::run_udp_loop(udp, local_addr, rx, allowlist, tracker, limits, ipv6).await;
         });
         (Some(tx), Some(local_addr))
     } else {
@@ -162,7 +183,7 @@ async fn run(config_path: &PathBuf, once: bool) -> Result<()> {
         let rtc_addr = webrtc_local_addr;
         tokio::spawn(async move {
             if let Err(e) =
-                server::run(data_dir, port, allow_uncompressed, allowlist, tracker, limits, rtc_tx, rtc_addr).await
+                server::run(data_dir, port, allow_uncompressed, allowlist, tracker, limits, rtc_tx, rtc_addr, has_ipv6).await
             {
                 tracing::error!("HTTP server failed: {:#}", e);
             }

@@ -45,6 +45,8 @@ struct Peer {
     peer_ip: IpAddr,
     /// Data channel ID -> sender for writing data channel bytes to TCP.
     channels: HashMap<ChannelId, mpsc::Sender<Vec<u8>>>,
+    /// The `_signal` control channel, if open.
+    signal_cid: Option<ChannelId>,
     created_at: Instant,
     last_activity: Instant,
 }
@@ -161,6 +163,7 @@ pub async fn run_udp_loop(
     relay_allowlist: RelayAllowlist,
     connection_tracker: ConnectionTracker,
     ws_limits: WsLimits,
+    has_ipv6: bool,
 ) {
     let mut peers: Vec<Peer> = Vec::new();
     let (tcp_tx, mut tcp_rx) = mpsc::channel::<TcpMsg>(1024);
@@ -176,6 +179,7 @@ pub async fn run_udp_loop(
                 rtc: new_peer.rtc,
                 peer_ip: new_peer.peer_ip,
                 channels: HashMap::new(),
+                signal_cid: None,
                 created_at: now,
                 last_activity: now,
             });
@@ -199,6 +203,7 @@ pub async fn run_udp_loop(
                             &connection_tracker,
                             &ws_limits,
                             &tcp_tx,
+                            has_ipv6,
                         );
                     }
                     Ok(Output::Timeout(t)) => {
@@ -350,9 +355,37 @@ fn handle_peer_event(
     connection_tracker: &ConnectionTracker,
     ws_limits: &WsLimits,
     tcp_tx: &mpsc::Sender<TcpMsg>,
+    has_ipv6: bool,
 ) {
+    /// Send a JSON message on the signal channel.
+    fn signal_send(peer: &mut Peer, msg: &serde_json::Value) {
+        if let Some(cid) = peer.signal_cid {
+            if let Some(mut ch) = peer.rtc.channel(cid) {
+                let _ = ch.write(false, msg.to_string().as_bytes());
+            }
+        }
+    }
+
     match event {
         Event::ChannelOpen(cid, label) => {
+            // --- Signal channel ---
+            if label == "_signal" {
+                info!("rtc: signal channel open from {}", peer.peer_ip);
+                peer.signal_cid = Some(cid);
+                signal_send(peer, &serde_json::json!({
+                    "type": "hello",
+                    "server": "tor-js-gateway",
+                    "ipv6": has_ipv6,
+                }));
+                return;
+            }
+
+            // --- Init channel (ignored) ---
+            if label == "_init" {
+                peer.rtc.direct_api().close_data_channel(cid);
+                return;
+            }
+
             info!("rtc: channel open {:?} label='{}' from {}", cid, label, peer.peer_ip);
 
             // Parse label as target address.
@@ -360,31 +393,40 @@ fn handle_peer_event(
                 Ok(a) => a,
                 Err(_) => {
                     warn!("rtc: bad channel label '{}'", label);
+                    signal_send(peer, &serde_json::json!({
+                        "type": "rejected",
+                        "channel": label,
+                        "reason": "invalid target address",
+                    }));
                     peer.rtc.direct_api().close_data_channel(cid);
                     return;
                 }
             };
 
             // Security checks (same as WS proxy).
-            if is_local(addr.ip()) {
-                warn!("rtc: rejected local target {}", addr);
-                peer.rtc.direct_api().close_data_channel(cid);
-                return;
-            }
-
-            let allowed = relay_allowlist
+            let rejection = if addr.is_ipv6() && !has_ipv6 {
+                Some("IPv6 not supported on this server")
+            } else if is_local(addr.ip()) {
+                Some("local addresses forbidden")
+            } else if !relay_allowlist
                 .read()
                 .unwrap_or_else(|e| e.into_inner())
-                .contains(&addr);
-            if !allowed {
-                warn!("rtc: rejected non-relay target {}", addr);
-                peer.rtc.direct_api().close_data_channel(cid);
-                return;
-            }
+                .contains(&addr)
+            {
+                Some("not an advertised relay")
+            } else if !connection_tracker.acquire(peer.peer_ip, ws_limits) {
+                Some("connection limit reached")
+            } else {
+                None
+            };
 
-            // Per-channel connection limit check.
-            if !connection_tracker.acquire(peer.peer_ip, ws_limits) {
-                warn!("rtc: per-channel limit reached for {}", peer.peer_ip);
+            if let Some(reason) = rejection {
+                warn!("rtc: rejected {} — {}", addr, reason);
+                signal_send(peer, &serde_json::json!({
+                    "type": "rejected",
+                    "channel": label,
+                    "reason": reason,
+                }));
                 peer.rtc.direct_api().close_data_channel(cid);
                 return;
             }
@@ -399,13 +441,33 @@ fn handle_peer_event(
         }
         Event::ChannelData(data) => {
             peer.last_activity = Instant::now();
+
+            // Handle signal channel messages.
+            if peer.signal_cid == Some(data.id) {
+                if let Ok(text) = std::str::from_utf8(&data.data) {
+                    if let Ok(msg) = serde_json::from_str::<serde_json::Value>(text) {
+                        match msg.get("type").and_then(|t| t.as_str()) {
+                            Some("ping") => {
+                                signal_send(peer, &serde_json::json!({
+                                    "type": "pong",
+                                    "ts": msg.get("ts"),
+                                }));
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                return;
+            }
+
             if let Some(tx) = peer.channels.get(&data.id) {
-                // Non-blocking send — if the TCP side is slow, drop the data.
                 let _ = tx.try_send(data.data.to_vec());
             }
         }
         Event::ChannelClose(cid) => {
-            if peer.channels.remove(&cid).is_some() {
+            if peer.signal_cid == Some(cid) {
+                peer.signal_cid = None;
+            } else if peer.channels.remove(&cid).is_some() {
                 connection_tracker.release(peer.peer_ip);
                 debug!("rtc: channel {:?} closed by remote", cid);
             }
@@ -427,10 +489,20 @@ async fn tcp_bridge_task(
     mut dc_to_tcp_rx: mpsc::Receiver<Vec<u8>>,
     tcp_tx: mpsc::Sender<TcpMsg>,
 ) {
-    let tcp = match TcpStream::connect(target).await {
-        Ok(s) => s,
-        Err(e) => {
+    let tcp = match tokio::time::timeout(
+        Duration::from_secs(10),
+        TcpStream::connect(target),
+    )
+    .await
+    {
+        Ok(Ok(s)) => s,
+        Ok(Err(e)) => {
             debug!("rtc: TCP connect to {} failed: {}", target, e);
+            let _ = tcp_tx.send(TcpMsg::Closed(cid)).await;
+            return;
+        }
+        Err(_) => {
+            debug!("rtc: TCP connect to {} timed out", target);
             let _ = tcp_tx.send(TcpMsg::Closed(cid)).await;
             return;
         }

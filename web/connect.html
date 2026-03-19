@@ -241,8 +241,10 @@ main {
   font-weight: 600;
 }
 
-.conn-badge.ws { background: #1a2a3a; color: #64b5f6; }
-.conn-badge.rtc { background: #2a1a3a; color: #ce93d8; }
+.conn-badge.websocket { background: #1a2a3a; color: #64b5f6; }
+.conn-badge.webrtc { background: #2a1a3a; color: #ce93d8; }
+.conn-badge.direct { background: #1a3a2a; color: #81c784; }
+.conn-badge.auto { background: #2a2a3a; color: var(--text-dim); }
 
 .status-indicator {
   display: flex;
@@ -368,6 +370,49 @@ main {
   color: var(--text-muted);
 }
 
+/* Shared signal channel panel */
+.signal-panel {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  margin-bottom: 1rem;
+  overflow: hidden;
+}
+
+.signal-panel summary {
+  cursor: pointer;
+  padding: 0.75rem 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  list-style: none;
+  font-size: 0.85rem;
+}
+
+.signal-panel summary::-webkit-details-marker { display: none; }
+
+.signal-panel summary::before {
+  content: '\25B6';
+  font-size: 0.6rem;
+  color: var(--text-muted);
+  margin-right: 0.5rem;
+  transition: transform 0.15s;
+}
+
+.signal-panel[open] summary::before { transform: rotate(90deg); }
+
+.signal-label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+
+.signal-log {
+  max-height: 200px;
+  border-top: 1px solid var(--border);
+}
+
 @media (max-width: 640px) {
   .form-row { flex-direction: column; }
   #target-input { width: 100%; }
@@ -401,25 +446,34 @@ main {
       <div class="form-group">
         <label for="transport-select">Transport</label>
         <select id="transport-select">
-          <option value="ws">WebSocket</option>
-          <option value="rtc">WebRTC</option>
+          <option value="auto">Auto</option>
+          <option value="webrtc">WebRTC</option>
+          <option value="websocket">WebSocket</option>
         </select>
       </div>
       <button id="connect-btn" class="btn btn-connect">Connect</button>
     </div>
     <div class="hint">
-      Enter a relay address from the consensus, or
-      <a href="#" id="pick-relay-link">pick from known relays</a>.
       Only consensus-listed relay addresses are allowed.
+      <a href="#" id="random-relay-link">Random relay</a> &middot;
+      <a href="#" id="pick-relay-link">Browse relays</a>
     </div>
     <div id="relay-list"></div>
   </div>
+
+  <details class="signal-panel" id="signal-panel" hidden>
+    <summary>
+      <span class="signal-label">Signal Channel</span>
+      <button class="btn btn-clear" id="ping-btn" onclick="event.preventDefault()">Ping</button>
+    </summary>
+    <div class="event-log signal-log" id="signal-log"></div>
+  </details>
 
   <div id="connections"></div>
 </main>
 
 <script type="module">
-import { connectRtc } from './torJsGateway.js';
+import { Gateway } from './torJsGateway.js';
 
 const connectionsEl = document.getElementById('connections');
 const targetInput = document.getElementById('target-input');
@@ -429,7 +483,9 @@ const pickRelayLink = document.getElementById('pick-relay-link');
 const relayListEl = document.getElementById('relay-list');
 
 let connId = 0;
-let rtcGateway = null; // shared WebRTC peer connection
+
+// Shared gateway instances (one per strategy config to reuse WebRTC peer connections)
+const gateways = new Map();
 let relays = null; // cached relay list from metadata
 
 // --- Relay picker ---
@@ -537,7 +593,7 @@ function createConnectionPanel(target, transport) {
   panel.className = 'connection-panel';
   panel.innerHTML = `
     <div class="conn-header">
-      <span class="conn-badge ${transport}">${transport.toUpperCase()}</span>
+      <span class="conn-badge ${transport}" id="badge-${id}">${transport.toUpperCase()}</span>
       <h3>${esc(target)}</h3>
       <div class="status-indicator">
         <span class="status-dot connecting" id="dot-${id}"></span>
@@ -549,6 +605,7 @@ function createConnectionPanel(target, transport) {
       <div class="form-group">
         <input id="send-${id}" type="text" placeholder="Hex bytes to send (e.g. 00 07 00 03 ...)" spellcheck="false">
       </div>
+      <button class="btn btn-send" id="tlsbtn-${id}" title="Send a minimal TLS ClientHello — expect a TLS Alert response">TLS Probe</button>
       <button class="btn btn-send" id="sendbtn-${id}">Send</button>
     </div>
     <div class="log-controls">
@@ -567,6 +624,8 @@ function createConnectionPanel(target, transport) {
   const statusEl = panel.querySelector(`#status-${id}`);
   const sendInput = panel.querySelector(`#send-${id}`);
   const sendBtn = panel.querySelector(`#sendbtn-${id}`);
+  const tlsBtn = panel.querySelector(`#tlsbtn-${id}`);
+  const badgeEl = panel.querySelector(`#badge-${id}`);
   const closeBtn = panel.querySelector(`#close-${id}`);
   const autoScrollCheck = panel.querySelector(`#autoscroll-${id}`);
   const clearBtn = panel.querySelector(`#clear-${id}`);
@@ -629,91 +688,117 @@ function createConnectionPanel(target, transport) {
     setStatus,
     sendInput,
     sendBtn,
+    tlsBtn,
     closeBtn,
     parseSendInput,
+    setBadge(strategy) {
+      badgeEl.className = `conn-badge ${strategy}`;
+      badgeEl.textContent = strategy.toUpperCase();
+    },
     onSent(n) { bytesSent += n; updateStats(); },
     onRecv(n) { bytesRecv += n; updateStats(); },
   };
 }
 
-// --- WebSocket connection ---
+// --- Unified connect ---
 
-function connectWebSocket(target) {
-  const ctrl = createConnectionPanel(target, 'ws');
-  const wsOrigin = location.origin.replace(/^http/, 'ws');
-  const url = `${wsOrigin}/socket/${target}`;
+// --- Shared signal channel UI ---
 
-  ctrl.addLog('*', `Connecting to ${url}...`);
-  const ws = new WebSocket(url);
-  ws.binaryType = 'arraybuffer';
+const signalPanel = document.getElementById('signal-panel');
+const signalLogEl = document.getElementById('signal-log');
+const pingBtnEl = document.getElementById('ping-btn');
+let signalT0 = performance.now();
 
-  ws.onopen = () => {
-    ctrl.setStatus('open', 'Connected');
-    ctrl.addLog('*', 'Connection established');
-  };
-
-  ws.onclose = (ev) => {
-    ctrl.setStatus('closed', `Closed (${ev.code})`);
-    ctrl.addLog('*', `Connection closed: code=${ev.code} reason=${ev.reason || '(none)'}`);
-    ctrl.sendBtn.disabled = true;
-  };
-
-  ws.onerror = () => {
-    ctrl.addLog('!', 'WebSocket error');
-  };
-
-  ws.onmessage = (ev) => {
-    const data = new Uint8Array(ev.data);
-    ctrl.onRecv(data.length);
-    ctrl.addLog('<', hexDump(data, 256), true);
-  };
-
-  ctrl.sendBtn.addEventListener('click', () => {
-    const bytes = ctrl.parseSendInput(ctrl.sendInput.value);
-    if (!bytes) {
-      ctrl.addLog('!', 'Invalid hex input');
-      return;
-    }
-    try {
-      ws.send(bytes);
-      ctrl.onSent(bytes.length);
-      ctrl.addLog('>', hexDump(bytes, 256), true);
-      ctrl.sendInput.value = '';
-    } catch (e) {
-      ctrl.addLog('!', `Send error: ${e.message}`);
-    }
-  });
-
-  ctrl.sendInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') ctrl.sendBtn.click();
-  });
-
-  ctrl.closeBtn.addEventListener('click', () => {
-    ws.close();
-  });
+function signalTs() {
+  return ((performance.now() - signalT0) / 1000).toFixed(3) + 's';
 }
 
-// --- WebRTC connection ---
+function addSignalLog(dir, body) {
+  signalPanel.hidden = false;
+  const entry = document.createElement('div');
+  entry.className = 'log-entry';
+  const dirClass = dir === '>' ? 'out' : dir === '<' ? 'in' : dir === '!' ? 'err' : 'sys';
+  entry.innerHTML =
+    `<span class="log-ts">${signalTs()}</span>` +
+    `<span class="log-dir ${dirClass}">${esc(dir)}</span>` +
+    `<span class="log-body">${esc(body)}</span>`;
+  signalLogEl.appendChild(entry);
+  signalLogEl.scrollTop = signalLogEl.scrollHeight;
+}
 
-async function connectWebRTC(target) {
-  const ctrl = createConnectionPanel(target, 'rtc');
+// One gateway per strategy config, with event logging dispatched to active panel.
+let activeCtrl = null;
+let activeGw = null;
+
+pingBtnEl.addEventListener('click', () => {
+  if (activeGw) {
+    activeGw.ping();
+    addSignalLog('>', 'ping');
+  }
+});
+
+function getGateway(strategies) {
+  const key = strategies ? strategies.join(',') : 'auto';
+  let gw = gateways.get(key);
+  if (gw) return gw;
+  const opts = {
+    onEvent: (ev) => {
+      // Signal channel events go to the shared signal log.
+      if (ev.type.startsWith('rtc-')) {
+        switch (ev.type) {
+          case 'rtc-hello':
+            addSignalLog('<', `hello (server=${ev.server}, ipv6=${ev.ipv6})`);
+            return;
+          case 'rtc-pong': {
+            const rtt = ev.ts ? `${Date.now() - ev.ts}ms` : '?';
+            addSignalLog('<', `pong (rtt=${rtt})`);
+            return;
+          }
+          case 'rtc-rejected':
+            addSignalLog('<', `rejected ${ev.channel}: ${ev.reason}`);
+            return;
+          case 'rtc-error':
+            addSignalLog('!', ev.message);
+            return;
+          case 'rtc-signaling':
+            addSignalLog('*', 'signaling');
+            break; // also log to connection panel
+          case 'rtc-connected':
+            addSignalLog('*', 'peer connected');
+            break;
+          case 'rtc-disconnected':
+            addSignalLog('*', 'peer disconnected');
+            break;
+        }
+      }
+      const msg = ev.strategy
+        ? `${ev.type} [${ev.strategy}]`
+        : ev.type;
+      activeCtrl?.addLog('*', msg);
+    },
+  };
+  if (strategies) opts.strategies = strategies;
+  gw = new Gateway(location.origin, opts);
+  gateways.set(key, gw);
+  return gw;
+}
+
+async function doConnect(target, strategyChoice) {
+  const strategies = strategyChoice === 'auto' ? undefined : [strategyChoice];
+  const label = strategyChoice === 'auto' ? 'auto' : strategyChoice;
+  const ctrl = createConnectionPanel(target, label);
+  activeCtrl = ctrl;
 
   try {
-    // Establish or reuse RTCPeerConnection
-    if (!rtcGateway || !rtcGateway.connected) {
-      ctrl.addLog('*', 'Establishing WebRTC peer connection...');
-      rtcGateway = await connectRtc(location.origin, (ev) => {
-        ctrl.addLog('*', `${ev.type}`);
-      });
-      ctrl.addLog('*', 'WebRTC peer connection established');
-    } else {
-      ctrl.addLog('*', 'Reusing existing WebRTC peer connection');
-    }
+    const gw = getGateway(strategies);
 
-    ctrl.addLog('*', `Opening data channel to ${target}...`);
-    const sock = await rtcGateway.openSocket(target);
+    ctrl.addLog('*', `Connecting to ${target}...`);
+    const sock = await gw.connect(target);
+
+    if (sock.strategy) ctrl.setBadge(sock.strategy);
     ctrl.setStatus('open', 'Connected');
-    ctrl.addLog('*', 'Data channel open');
+    ctrl.addLog('*', `Connected via ${sock.strategy || 'unknown'}`);
+    activeGw = gw;
 
     sock.onmessage = (data) => {
       ctrl.onRecv(data.length);
@@ -721,10 +806,22 @@ async function connectWebRTC(target) {
     };
 
     sock.onclose = () => {
-      ctrl.setStatus('closed', 'Closed');
-      ctrl.addLog('*', 'Data channel closed');
+      const reason = sock._error ? `Rejected: ${sock._error}` : 'Closed';
+      ctrl.setStatus('closed', reason);
+      ctrl.addLog(sock._error ? '!' : '*', reason);
       ctrl.sendBtn.disabled = true;
+      ctrl.tlsBtn.disabled = true;
     };
+
+    function sendBytes(bytes) {
+      try {
+        sock.send(bytes);
+        ctrl.onSent(bytes.length);
+        ctrl.addLog('>', hexDump(bytes, 256), true);
+      } catch (e) {
+        ctrl.addLog('!', `Send error: ${e.message}`);
+      }
+    }
 
     ctrl.sendBtn.addEventListener('click', () => {
       const bytes = ctrl.parseSendInput(ctrl.sendInput.value);
@@ -732,14 +829,13 @@ async function connectWebRTC(target) {
         ctrl.addLog('!', 'Invalid hex input');
         return;
       }
-      try {
-        sock.send(bytes);
-        ctrl.onSent(bytes.length);
-        ctrl.addLog('>', hexDump(bytes, 256), true);
-        ctrl.sendInput.value = '';
-      } catch (e) {
-        ctrl.addLog('!', `Send error: ${e.message}`);
-      }
+      sendBytes(bytes);
+      ctrl.sendInput.value = '';
+    });
+
+    // TLS ClientHello probe
+    ctrl.tlsBtn.addEventListener('click', () => {
+      sendBytes(new Uint8Array([0x16, 0x03, 0x01, 0x00, 0x05, 0x01, 0x00, 0x00, 0x01, 0x00]));
     });
 
     ctrl.sendInput.addEventListener('keydown', (e) => {
@@ -762,24 +858,33 @@ async function connectWebRTC(target) {
 connectBtn.addEventListener('click', () => {
   const target = targetInput.value.trim();
   if (!target) return;
-  const transport = transportSelect.value;
-
-  if (transport === 'ws') {
-    connectWebSocket(target);
-  } else {
-    connectWebRTC(target);
-  }
+  doConnect(target, transportSelect.value);
 });
 
 targetInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') connectBtn.click();
 });
 
-// Pre-populate from URL hash
+// Random relay
+const randomRelayLink = document.getElementById('random-relay-link');
+async function fetchRandomRelay() {
+  try {
+    const res = await fetch('./relay/random');
+    if (res.ok) targetInput.value = await res.text();
+  } catch {}
+}
+randomRelayLink.addEventListener('click', (e) => {
+  e.preventDefault();
+  fetchRandomRelay();
+});
+
+// Pre-populate from URL hash, or fetch a random relay
 if (location.hash) {
   const params = new URLSearchParams(location.hash.slice(1));
   if (params.get('target')) targetInput.value = params.get('target');
-  if (params.get('transport')) transportSelect.value = params.get('transport');
+  if (params.get('strategy')) transportSelect.value = params.get('strategy');
+} else {
+  fetchRandomRelay();
 }
 </script>
 

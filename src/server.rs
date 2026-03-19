@@ -27,6 +27,7 @@ pub struct AppState {
     pub ws_limits: WsLimits,
     pub webrtc_tx: Option<tokio::sync::mpsc::Sender<NewPeer>>,
     pub webrtc_local_addr: Option<std::net::SocketAddr>,
+    pub has_ipv6: bool,
 }
 
 /// Start the HTTP server. Runs forever; call via `tokio::spawn`.
@@ -39,6 +40,7 @@ pub async fn run(
     ws_limits: WsLimits,
     webrtc_tx: Option<tokio::sync::mpsc::Sender<NewPeer>>,
     webrtc_local_addr: Option<std::net::SocketAddr>,
+    has_ipv6: bool,
 ) -> Result<()> {
     let state = AppState {
         output_dir,
@@ -47,6 +49,7 @@ pub async fn run(
         ws_limits,
         webrtc_tx,
         webrtc_local_addr,
+        has_ipv6,
     };
     let mut app = Router::new()
         .route("/", get(handle_index))
@@ -56,7 +59,8 @@ pub async fn run(
         .route("/metadata.json", get(handle_metadata))
         .route("/bootstrap.zip.br", get(handle_bootstrap_zip_br))
         .route("/socket/{target}", get(crate::ws_proxy::handle_socket))
-        .route("/rtc/connect", axum::routing::post(crate::webrtc_proxy::handle_rtc_connect));
+        .route("/rtc/connect", axum::routing::post(crate::webrtc_proxy::handle_rtc_connect))
+        .route("/relay/random", get(handle_random_relay));
     if allow_uncompressed {
         app = app.route("/bootstrap.zip", get(handle_bootstrap_zip));
     }
@@ -189,6 +193,31 @@ async fn handle_bootstrap_page() -> Response {
         StatusCode::OK,
         [(header::CONTENT_TYPE, "text/html; charset=utf-8")],
         BOOTSTRAP_HTML,
+    )
+        .into_response()
+}
+
+/// GET /relay/random — return a random relay address from the allowlist.
+async fn handle_random_relay(State(state): State<AppState>) -> Response {
+    use rand::Rng;
+    let allowlist = state.relay_allowlist.read().unwrap_or_else(|e| e.into_inner());
+    if allowlist.is_empty() {
+        return (StatusCode::SERVICE_UNAVAILABLE, "no relays available").into_response();
+    }
+    let candidates: Vec<_> = if state.has_ipv6 {
+        allowlist.iter().collect()
+    } else {
+        allowlist.iter().filter(|a| a.is_ipv4()).collect()
+    };
+    if candidates.is_empty() {
+        return (StatusCode::SERVICE_UNAVAILABLE, "no relays available").into_response();
+    }
+    let idx = rand::rng().random_range(0..candidates.len());
+    let addr = candidates[idx];
+    (
+        StatusCode::OK,
+        [(header::CONTENT_TYPE, "text/plain")],
+        addr.to_string(),
     )
         .into_response()
 }

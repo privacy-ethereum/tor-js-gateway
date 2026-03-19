@@ -295,33 +295,446 @@ async function readResponseWithProgress(res, total, onEvent, extra) {
   return result;
 }
 
+// --- Environment detection ---
+
+const HAS_DENO = typeof globalThis.Deno !== "undefined";
+const HAS_NODE =
+  typeof globalThis.process?.versions?.node !== "undefined";
+const HAS_RTC = typeof globalThis.RTCPeerConnection !== "undefined";
+const HAS_WS =
+  typeof globalThis.WebSocket !== "undefined" ||
+  HAS_DENO ||
+  HAS_NODE;
+
+function defaultStrategies() {
+  const s = [];
+  if (HAS_DENO || HAS_NODE) s.push("direct");
+  if (HAS_RTC) s.push("webrtc");
+  if (HAS_WS) s.push("websocket");
+  return s;
+}
+
+// --- Unified Gateway ---
+
 /**
- * Create a WebRTC-based relay connection to the gateway.
+ * Unified gateway client. Opens relay sockets via configurable strategies
+ * (direct TCP, WebRTC data channels, WebSocket) with automatic fallback.
  *
- * Returns a GatewayConnection that can open data channels to Tor relays.
- * Each data channel acts like a TCP socket to the target relay.
- *
- * Events emitted:
+ * Events emitted via onEvent:
+ * - { type: "strategy", strategy: string, target: string }
+ * - { type: "strategy-failed", strategy: string, target: string, error: string }
  * - { type: "rtc-signaling" }
  * - { type: "rtc-connected" }
  * - { type: "rtc-disconnected" }
+ * - { type: "connected", strategy: string, target: string }
  *
- * @param {string} gatewayUrl - The gateway origin (e.g. "https://example.com").
- * @param {function} [onEvent] - Optional event callback.
- * @returns {Promise<GatewayConnection>}
+ * @example
+ * const gw = new Gateway('https://gateway.example.com');
+ * const sock = await gw.connect('198.51.100.1:9001');
+ * sock.send(new Uint8Array([0x00, 0x07]));
+ * sock.onmessage = (data) => console.log(data);
+ * sock.close();
+ * gw.close();
+ */
+export class Gateway {
+  #url;
+  #strategies;
+  #onEvent;
+  #rtcPc = null; // RTCPeerConnection | null
+  #rtcAlive = false;
+  #signalChannel = null; // RTCDataChannel for _signal
+  #pendingRejects = new Map(); // label -> reject function
+  #openSockets = new Map(); // label -> RelaySocket (for post-open rejections)
+
+  /**
+   * @param {string} url - Gateway origin (e.g. "https://example.com").
+   * @param {object} [options]
+   * @param {string[]} [options.strategies] - Ordered list of strategies to try.
+   *   Valid values: "direct", "webrtc", "websocket". Defaults based on environment.
+   * @param {function} [options.onEvent] - Optional instrumentation callback.
+   */
+  constructor(url, options = {}) {
+    this.#url = url.replace(/\/+$/, "");
+    this.#strategies = options.strategies || defaultStrategies();
+    this.#onEvent = options.onEvent || null;
+  }
+
+  /**
+   * Open a relay socket to the given target.
+   * Tries each configured strategy in order until one succeeds.
+   *
+   * @param {string} target - Relay address as "ip:port".
+   * @returns {Promise<RelaySocket>}
+   */
+  async connect(target) {
+    const errors = [];
+
+    for (const strategy of this.#strategies) {
+      this.#onEvent?.({ type: "strategy", strategy, target });
+      try {
+        let sock;
+        switch (strategy) {
+          case "direct":
+            sock = await this.#connectDirect(target);
+            break;
+          case "webrtc":
+            sock = await this.#connectWebRTC(target);
+            break;
+          case "websocket":
+            sock = await this.#connectWebSocket(target);
+            break;
+          default:
+            throw new Error(`unknown strategy: ${strategy}`);
+        }
+        sock.strategy = strategy;
+        this.#onEvent?.({ type: "connected", strategy, target });
+        return sock;
+      } catch (e) {
+        this.#onEvent?.({
+          type: "strategy-failed",
+          strategy,
+          target,
+          error: e.message,
+        });
+        errors.push(`${strategy}: ${e.message}`);
+      }
+    }
+
+    throw new Error(
+      `all strategies failed for ${target}: ${errors.join("; ")}`,
+    );
+  }
+
+  /** Close WebRTC peer connection and release resources. */
+  close() {
+    if (this.#rtcPc) {
+      this.#rtcPc.close();
+      this.#rtcPc = null;
+      this.#rtcAlive = false;
+    }
+  }
+
+  // --- Strategy: direct TCP (Node.js / Deno) ---
+
+  async #connectDirect(target) {
+    const [host, portStr] = target.split(":");
+    const port = parseInt(portStr, 10);
+
+    if (HAS_DENO) {
+      const conn = await Deno.connect({ hostname: host, port });
+      return RelaySocket.fromDenoConn(conn);
+    }
+
+    if (HAS_NODE) {
+      const net = await import("node:net");
+      const socket = net.createConnection({ host, port });
+      await new Promise((resolve, reject) => {
+        socket.once("connect", resolve);
+        socket.once("error", reject);
+      });
+      return RelaySocket.fromNodeSocket(socket);
+    }
+
+    throw new Error("direct TCP not available in this environment");
+  }
+
+  // --- Strategy: WebRTC data channel ---
+
+  async #connectWebRTC(target) {
+    if (!HAS_RTC) throw new Error("RTCPeerConnection not available");
+
+    // Create or reuse peer connection.
+    if (!this.#rtcAlive) {
+      if (this.#rtcPc) this.#rtcPc.close();
+      await this.#setupRtcPeerConnection();
+    }
+
+    const dc = this.#rtcPc.createDataChannel(target);
+    dc.binaryType = "arraybuffer";
+
+    // Race: channel opens vs server rejects via _signal.
+    await new Promise((resolve, reject) => {
+      this.#pendingRejects.set(target, reject);
+      dc.onopen = resolve;
+      dc.onerror = (e) => {
+        this.#pendingRejects.delete(target);
+        reject(new Error(`data channel error: ${e.error?.message || e}`));
+      };
+    });
+
+    // Channel is open, but rejection may still arrive.
+    this.#pendingRejects.delete(target);
+    const sock = RelaySocket.fromDataChannel(dc);
+    this.#openSockets.set(target, sock);
+    dc.onclose = () => {
+      this.#openSockets.delete(target);
+      sock._notifyClose();
+    };
+    return sock;
+  }
+
+  async #setupRtcPeerConnection() {
+    const pc = new RTCPeerConnection();
+
+    // Signal channel for control messages (hello, ping/pong, rejections).
+    const signal = pc.createDataChannel("_signal");
+    signal.onmessage = (ev) => this.#handleSignalMessage(ev.data);
+
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+
+    // Wait for ICE gathering to complete.
+    await new Promise((resolve) => {
+      if (pc.iceGatheringState === "complete") return resolve();
+      pc.addEventListener("icegatheringstatechange", () => {
+        if (pc.iceGatheringState === "complete") resolve();
+      });
+    });
+
+    this.#onEvent?.({ type: "rtc-signaling" });
+
+    const res = await fetch(`${this.#url}/rtc/connect`, {
+      method: "POST",
+      body: JSON.stringify(pc.localDescription),
+    });
+
+    if (!res.ok) {
+      pc.close();
+      throw new Error(
+        `rtc signaling failed: ${res.status} ${await res.text()}`,
+      );
+    }
+
+    const answer = await res.json();
+    await pc.setRemoteDescription(answer);
+
+    // Wait for connection.
+    await new Promise((resolve, reject) => {
+      if (pc.connectionState === "connected") return resolve();
+      pc.addEventListener("connectionstatechange", () => {
+        if (pc.connectionState === "connected") resolve();
+        if (pc.connectionState === "failed")
+          reject(new Error("WebRTC connection failed"));
+      });
+    });
+
+    this.#rtcPc = pc;
+    this.#rtcAlive = true;
+    this.#signalChannel = signal;
+    this.#onEvent?.({ type: "rtc-connected" });
+
+    pc.addEventListener("connectionstatechange", () => {
+      if (
+        pc.connectionState === "disconnected" ||
+        pc.connectionState === "closed" ||
+        pc.connectionState === "failed"
+      ) {
+        this.#rtcAlive = false;
+        this.#signalChannel = null;
+        this.#onEvent?.({ type: "rtc-disconnected" });
+      }
+    });
+  }
+
+  #handleSignalMessage(data) {
+    try {
+      const msg = JSON.parse(data);
+      switch (msg.type) {
+        case "hello":
+          this.#onEvent?.({ type: "rtc-hello", server: msg.server, ipv6: msg.ipv6 });
+          break;
+        case "pong":
+          this.#onEvent?.({ type: "rtc-pong", ts: msg.ts });
+          break;
+        case "rejected": {
+          // If still waiting to open, reject the promise.
+          const reject = this.#pendingRejects.get(msg.channel);
+          if (reject) {
+            this.#pendingRejects.delete(msg.channel);
+            reject(new Error(`rejected: ${msg.reason}`));
+          }
+          // If already open, close it from our side.
+          const sock = this.#openSockets.get(msg.channel);
+          if (sock) {
+            this.#openSockets.delete(msg.channel);
+            sock._error = msg.reason;
+            sock.close();
+            sock._notifyClose();
+          }
+          this.#onEvent?.({ type: "rtc-rejected", channel: msg.channel, reason: msg.reason });
+          break;
+        }
+        case "error":
+          console.warn(`[tor-js-gateway] ${msg.message}`);
+          this.#onEvent?.({ type: "rtc-error", message: msg.message });
+          break;
+      }
+    } catch {}
+  }
+
+  /**
+   * Send a ping on the signal channel. The server will respond with a pong
+   * containing the same `ts` value (emitted as an rtc-pong event).
+   */
+  ping() {
+    if (this.#signalChannel?.readyState === "open") {
+      this.#signalChannel.send(JSON.stringify({ type: "ping", ts: Date.now() }));
+    }
+  }
+
+  // --- Strategy: WebSocket ---
+
+  async #connectWebSocket(target) {
+    const wsUrl = `${this.#url.replace(/^http/, "ws")}/socket/${target}`;
+    const ws = new WebSocket(wsUrl);
+    ws.binaryType = "arraybuffer";
+
+    await new Promise((resolve, reject) => {
+      ws.onopen = resolve;
+      ws.onerror = () => reject(new Error("websocket connection failed"));
+    });
+
+    return RelaySocket.fromWebSocket(ws);
+  }
+}
+
+// --- Unified RelaySocket ---
+
+/**
+ * A relay socket providing a uniform interface regardless of transport.
+ *
+ * Assign `onmessage` and `onclose` handlers after creation.
+ * Call `send(data)` with Uint8Array and `close()` when done.
+ */
+export class RelaySocket {
+  #send;
+  #close;
+  #readyState;
+  #closed = false;
+  #onclose = null;
+  onmessage = null;
+  /** Which strategy produced this socket (set by Gateway.connect). */
+  strategy = null;
+
+  constructor(send, close, readyState) {
+    this.#send = send;
+    this.#close = close;
+    this.#readyState = readyState;
+  }
+
+  /** Setter that fires immediately if close already happened. */
+  set onclose(fn) {
+    this.#onclose = fn;
+    if (this.#closed && fn) queueMicrotask(() => fn());
+  }
+  get onclose() { return this.#onclose; }
+
+  /** @internal — called by transport wrappers. */
+  _notifyClose() {
+    if (this.#closed) return;
+    this.#closed = true;
+    this.#onclose?.();
+  }
+
+  send(data) {
+    this.#send(data);
+  }
+
+  close() {
+    this.#close();
+  }
+
+  get readyState() {
+    return this.#readyState();
+  }
+
+  /** Wrap a WebRTC data channel. */
+  static fromDataChannel(dc) {
+    const sock = new RelaySocket(
+      (data) => dc.send(data),
+      () => dc.close(),
+      () => dc.readyState,
+    );
+    dc.onmessage = (ev) => sock.onmessage?.(new Uint8Array(ev.data));
+    dc.onclose = () => sock._notifyClose();
+    return sock;
+  }
+
+  /** Wrap a WebSocket. */
+  static fromWebSocket(ws) {
+    const sock = new RelaySocket(
+      (data) => ws.send(data),
+      () => ws.close(),
+      () => {
+        switch (ws.readyState) {
+          case WebSocket.CONNECTING: return "connecting";
+          case WebSocket.OPEN: return "open";
+          case WebSocket.CLOSING: return "closing";
+          case WebSocket.CLOSED: return "closed";
+          default: return "closed";
+        }
+      },
+    );
+    ws.onmessage = (ev) => sock.onmessage?.(new Uint8Array(ev.data));
+    ws.onclose = () => sock._notifyClose();
+    return sock;
+  }
+
+  /** Wrap a Deno TCP connection. */
+  static fromDenoConn(conn) {
+    const sock = new RelaySocket(
+      (data) => {
+        const writer = conn.writable.getWriter();
+        writer.write(data).then(() => writer.releaseLock());
+      },
+      () => conn.close(),
+      () => "open",
+    );
+    // Read loop
+    (async () => {
+      try {
+        for await (const chunk of conn.readable) {
+          sock.onmessage?.(new Uint8Array(chunk));
+        }
+      } catch {}
+      sock._notifyClose();
+    })();
+    return sock;
+  }
+
+  /** Wrap a Node.js net.Socket. */
+  static fromNodeSocket(socket) {
+    const sock = new RelaySocket(
+      (data) => socket.write(data),
+      () => socket.destroy(),
+      () => (socket.destroyed ? "closed" : "open"),
+    );
+    socket.on("data", (buf) => sock.onmessage?.(new Uint8Array(buf)));
+    socket.on("close", () => sock._notifyClose());
+    socket.on("error", () => {});
+    return sock;
+  }
+}
+
+// --- Backward-compatible lower-level exports ---
+
+/**
+ * Create a WebRTC peer connection to the gateway (lower-level API).
+ * Prefer `new Gateway(url).connect(target)` for most use cases.
  */
 export async function connectRtc(gatewayUrl, onEvent) {
+  const gw = new Gateway(gatewayUrl, {
+    strategies: ["webrtc"],
+    onEvent,
+  });
+  // Force peer connection setup by connecting to a dummy and extracting state.
+  // Instead, expose the underlying GatewayConnection for compat.
   const pc = new RTCPeerConnection();
-
-  // We need at least one data channel before creating an offer,
-  // otherwise the SDP won't include a SCTP transport.
-  const initChannel = pc.createDataChannel("_init");
-  initChannel.onopen = () => initChannel.close();
+  const signalChannel = pc.createDataChannel("_signal");
 
   const offer = await pc.createOffer();
   await pc.setLocalDescription(offer);
 
-  // Wait for ICE gathering to complete so we send all candidates in one shot.
   await new Promise((resolve) => {
     if (pc.iceGatheringState === "complete") return resolve();
     pc.addEventListener("icegatheringstatechange", () => {
@@ -331,7 +744,8 @@ export async function connectRtc(gatewayUrl, onEvent) {
 
   onEvent?.({ type: "rtc-signaling" });
 
-  const res = await fetch(`${gatewayUrl}/rtc/connect`, {
+  const url = gatewayUrl.replace(/\/+$/, "");
+  const res = await fetch(`${url}/rtc/connect`, {
     method: "POST",
     body: JSON.stringify(pc.localDescription),
   });
@@ -341,110 +755,58 @@ export async function connectRtc(gatewayUrl, onEvent) {
     throw new Error(`rtc signaling failed: ${res.status} ${await res.text()}`);
   }
 
-  const answer = await res.json();
-  await pc.setRemoteDescription(answer);
+  await pc.setRemoteDescription(await res.json());
 
-  // Wait for the connection to establish.
   await new Promise((resolve, reject) => {
     if (pc.connectionState === "connected") return resolve();
     pc.addEventListener("connectionstatechange", () => {
       if (pc.connectionState === "connected") resolve();
-      if (pc.connectionState === "failed") reject(new Error("WebRTC connection failed"));
+      if (pc.connectionState === "failed")
+        reject(new Error("WebRTC connection failed"));
     });
   });
 
   onEvent?.({ type: "rtc-connected" });
-
-  const conn = new GatewayConnection(pc, onEvent);
-  return conn;
+  return new GatewayConnection(pc, onEvent);
 }
 
 /**
- * A WebRTC connection to a tor-js-gateway, capable of opening
- * data channels to Tor relays.
+ * Lower-level WebRTC connection wrapper. Prefer Gateway class.
  */
 export class GatewayConnection {
-  /** @type {RTCPeerConnection} */
   #pc;
   #onEvent;
 
   constructor(pc, onEvent) {
     this.#pc = pc;
     this.#onEvent = onEvent;
-
     pc.addEventListener("connectionstatechange", () => {
-      if (pc.connectionState === "disconnected" || pc.connectionState === "closed") {
+      if (
+        pc.connectionState === "disconnected" ||
+        pc.connectionState === "closed"
+      ) {
         onEvent?.({ type: "rtc-disconnected" });
       }
     });
   }
 
-  /**
-   * Open a relay socket to the given target address.
-   *
-   * @param {string} target - The relay address as "ip:port".
-   * @returns {Promise<RelaySocket>}
-   */
   async openSocket(target) {
     const dc = this.#pc.createDataChannel(target);
     dc.binaryType = "arraybuffer";
-
     await new Promise((resolve, reject) => {
       dc.onopen = resolve;
-      dc.onerror = (e) => reject(new Error(`data channel error: ${e.error?.message || e}`));
+      dc.onerror = (e) =>
+        reject(new Error(`data channel error: ${e.error?.message || e}`));
     });
-
-    return new RelaySocket(dc);
+    return RelaySocket.fromDataChannel(dc);
   }
 
-  /** Close the peer connection and all data channels. */
   close() {
     this.#pc.close();
   }
 
-  /** Whether the underlying peer connection is still alive. */
   get connected() {
     return this.#pc.connectionState === "connected";
-  }
-}
-
-/**
- * A single relay socket backed by a WebRTC data channel.
- * Provides a simple send/receive interface matching the WebSocket pattern.
- */
-export class RelaySocket {
-  /** @type {RTCDataChannel} */
-  #dc;
-  /** @type {function|null} */
-  onmessage = null;
-  /** @type {function|null} */
-  onclose = null;
-
-  constructor(dc) {
-    this.#dc = dc;
-
-    dc.onmessage = (ev) => {
-      this.onmessage?.(new Uint8Array(ev.data));
-    };
-
-    dc.onclose = () => {
-      this.onclose?.();
-    };
-  }
-
-  /** Send binary data to the relay. */
-  send(data) {
-    this.#dc.send(data);
-  }
-
-  /** Close the data channel (and the corresponding TCP connection on the gateway). */
-  close() {
-    this.#dc.close();
-  }
-
-  /** The data channel's ready state. */
-  get readyState() {
-    return this.#dc.readyState;
   }
 }
 

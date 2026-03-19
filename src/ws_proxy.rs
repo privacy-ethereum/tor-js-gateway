@@ -134,6 +134,11 @@ pub async fn handle_socket(
         }
     };
 
+    if addr.is_ipv6() && !state.has_ipv6 {
+        warn!("rejected IPv6 target {} (no IPv6 connectivity)", addr);
+        return (StatusCode::BAD_REQUEST, "IPv6 targets are not supported on this server").into_response();
+    }
+
     if is_local(addr.ip()) {
         warn!("rejected local target {}", addr);
         return (StatusCode::FORBIDDEN, "connections to local addresses are forbidden")
@@ -182,7 +187,10 @@ async fn relay_inner(
     idle_timeout: Duration,
     max_lifetime: Duration,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let tcp = TcpStream::connect(addr).await?;
+    let tcp = tokio::time::timeout(Duration::from_secs(10), TcpStream::connect(addr))
+        .await
+        .map_err(|_| "TCP connect timeout")?
+        ?;
     info!("ws relay connected to {}", addr);
 
     let (mut tcp_read, mut tcp_write) = tcp.into_split();
