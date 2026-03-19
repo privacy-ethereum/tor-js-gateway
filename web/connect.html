@@ -480,6 +480,40 @@ main {
 <script type="module">
 import { Gateway } from './torJsGateway.js';
 
+// Build a minimal valid TLS 1.3 ClientHello that elicits a ServerHello
+// without closing the connection.
+function buildTlsClientHello() {
+  const random = crypto.getRandomValues(new Uint8Array(32));
+  const sessionId = crypto.getRandomValues(new Uint8Array(32));
+  const x25519Key = crypto.getRandomValues(new Uint8Array(32));
+
+  // Extensions
+  const exts = [];
+  // supported_versions: TLS 1.2 + 1.3
+  exts.push(0x00,0x2b, 0x00,0x05, 0x04, 0x03,0x04, 0x03,0x03);
+  // supported_groups: x25519, secp256r1
+  exts.push(0x00,0x0a, 0x00,0x06, 0x00,0x04, 0x00,0x1d, 0x00,0x17);
+  // signature_algorithms
+  exts.push(0x00,0x0d, 0x00,0x0a, 0x00,0x08, 0x04,0x03, 0x08,0x04, 0x04,0x01, 0x08,0x01);
+  // key_share: x25519
+  exts.push(0x00,0x33, 0x00,0x26, 0x00,0x24, 0x00,0x1d, 0x00,0x20, ...x25519Key);
+
+  const ciphers = [0x13,0x01, 0x13,0x02, 0x13,0x03, 0xc0,0x2b, 0xc0,0x2f, 0xc0,0x2c, 0xc0,0x30];
+
+  const body = [
+    0x03, 0x03,           // TLS 1.2 (compat)
+    ...random,            // 32 bytes random
+    0x20, ...sessionId,   // 32-byte session ID
+    (ciphers.length >> 8) & 0xff, ciphers.length & 0xff, ...ciphers,
+    0x01, 0x00,           // compression: null
+    (exts.length >> 8) & 0xff, exts.length & 0xff, ...exts,
+  ];
+
+  const hs = [0x01, (body.length >> 16) & 0xff, (body.length >> 8) & 0xff, body.length & 0xff, ...body];
+  const record = [0x16, 0x03, 0x01, (hs.length >> 8) & 0xff, hs.length & 0xff, ...hs];
+  return new Uint8Array(record);
+}
+
 const connectionsEl = document.getElementById('connections');
 const targetInput = document.getElementById('target-input');
 const transportSelect = document.getElementById('transport-select');
@@ -610,7 +644,7 @@ function createConnectionPanel(target, transport) {
       <div class="form-group">
         <input id="send-${id}" type="text" placeholder="Hex bytes to send (e.g. 00 07 00 03 ...)" spellcheck="false">
       </div>
-      <button class="btn btn-send" id="tlsbtn-${id}" title="Send a minimal TLS ClientHello — expect a TLS Alert response">TLS Probe</button>
+      <button class="btn btn-send" id="tlsbtn-${id}" title="Send a TLS ClientHello — relay responds with ServerHello">TLS Hello</button>
       <button class="btn btn-send" id="sendbtn-${id}">Send</button>
     </div>
     <div class="log-controls">
@@ -762,6 +796,9 @@ function getGateway(strategies) {
           case 'rtc-rejected':
             addSignalLog('<', `rejected ${ev.channel}: ${ev.reason}`);
             return;
+          case 'rtc-closed':
+            addSignalLog('<', `closed ${ev.channel}`);
+            return;
           case 'rtc-error':
             addSignalLog('!', ev.message);
             return;
@@ -838,9 +875,9 @@ async function doConnect(target, strategyChoice) {
       ctrl.sendInput.value = '';
     });
 
-    // TLS ClientHello probe
+    // TLS ClientHello — valid enough to get a ServerHello back without closing
     ctrl.tlsBtn.addEventListener('click', () => {
-      sendBytes(new Uint8Array([0x16, 0x03, 0x01, 0x00, 0x05, 0x01, 0x00, 0x00, 0x01, 0x00]));
+      sendBytes(buildTlsClientHello());
     });
 
     ctrl.sendInput.addEventListener('keydown', (e) => {

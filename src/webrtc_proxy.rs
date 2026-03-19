@@ -43,8 +43,8 @@ enum TcpMsg {
 struct Peer {
     rtc: Rtc,
     peer_ip: IpAddr,
-    /// Data channel ID -> sender for writing data channel bytes to TCP.
-    channels: HashMap<ChannelId, mpsc::Sender<Vec<u8>>>,
+    /// Data channel ID -> (label, sender for writing data channel bytes to TCP).
+    channels: HashMap<ChannelId, (String, mpsc::Sender<Vec<u8>>)>,
     /// The `_signal` control channel, if open.
     signal_cid: Option<ChannelId>,
     created_at: Instant,
@@ -225,7 +225,7 @@ pub async fn run_udp_loop(
             match msg {
                 TcpMsg::Data(cid, data) => {
                     for peer in peers.iter_mut() {
-                        if peer.channels.contains_key(&cid) {
+                        if peer.channels.get(&cid).is_some() {
                             if let Some(mut ch) = peer.rtc.channel(cid) {
                                 let _ = ch.write(true, &data);
                             }
@@ -236,11 +236,24 @@ pub async fn run_udp_loop(
                 }
                 TcpMsg::Closed(cid) => {
                     for peer in peers.iter_mut() {
-                        if peer.channels.remove(&cid).is_some() {
-                            // Close the data channel from our side too.
+                        if let Some((label, _)) = peer.channels.remove(&cid) {
+                            let sctp_id = peer.rtc.direct_api()
+                                .sctp_stream_id_by_channel_id(cid)
+                                .unwrap_or(0);
                             peer.rtc.direct_api().close_data_channel(cid);
+                            // Notify client via signal channel so it can close locally.
+                            if let Some(sig_cid) = peer.signal_cid {
+                                if let Some(mut ch) = peer.rtc.channel(sig_cid) {
+                                    let msg = serde_json::json!({
+                                        "type": "closed",
+                                        "channel": label,
+                                        "sctp_id": sctp_id,
+                                    });
+                                    let _ = ch.write(false, msg.to_string().as_bytes());
+                                }
+                            }
                             connection_tracker.release(peer.peer_ip);
-                            debug!("rtc: TCP closed for channel {:?}, peer {}", cid, peer.peer_ip);
+                            debug!("rtc: TCP closed for channel {:?} ({}), peer {}", cid, label, peer.peer_ip);
                             break;
                         }
                     }
@@ -386,7 +399,10 @@ fn handle_peer_event(
                 return;
             }
 
-            info!("rtc: channel open {:?} label='{}' from {}", cid, label, peer.peer_ip);
+            let sctp_id = peer.rtc.direct_api()
+                .sctp_stream_id_by_channel_id(cid)
+                .unwrap_or(0);
+            info!("rtc: channel open {:?} sctp={} label='{}' from {}", cid, sctp_id, label, peer.peer_ip);
 
             // Parse label as target address.
             let addr: SocketAddr = match label.parse() {
@@ -396,6 +412,7 @@ fn handle_peer_event(
                     signal_send(peer, &serde_json::json!({
                         "type": "rejected",
                         "channel": label,
+                        "sctp_id": sctp_id,
                         "reason": "invalid target address",
                     }));
                     peer.rtc.direct_api().close_data_channel(cid);
@@ -425,6 +442,7 @@ fn handle_peer_event(
                 signal_send(peer, &serde_json::json!({
                     "type": "rejected",
                     "channel": label,
+                    "sctp_id": sctp_id,
                     "reason": reason,
                 }));
                 peer.rtc.direct_api().close_data_channel(cid);
@@ -436,7 +454,7 @@ fn handle_peer_event(
             let tcp_tx = tcp_tx.clone();
             tokio::spawn(tcp_bridge_task(addr, cid, dc_to_tcp_rx, tcp_tx));
 
-            peer.channels.insert(cid, dc_to_tcp_tx);
+            peer.channels.insert(cid, (label.to_string(), dc_to_tcp_tx));
             peer.last_activity = Instant::now();
         }
         Event::ChannelData(data) => {
@@ -460,14 +478,14 @@ fn handle_peer_event(
                 return;
             }
 
-            if let Some(tx) = peer.channels.get(&data.id) {
+            if let Some((_, tx)) = peer.channels.get(&data.id) {
                 let _ = tx.try_send(data.data.to_vec());
             }
         }
         Event::ChannelClose(cid) => {
             if peer.signal_cid == Some(cid) {
                 peer.signal_cid = None;
-            } else if peer.channels.remove(&cid).is_some() {
+            } else if peer.channels.remove(&cid).is_some() { // (label, tx) dropped
                 connection_tracker.release(peer.peer_ip);
                 debug!("rtc: channel {:?} closed by remote", cid);
             }

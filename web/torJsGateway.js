@@ -342,9 +342,11 @@ export class Gateway {
   #onEvent;
   #rtcPc = null; // RTCPeerConnection | null
   #rtcAlive = false;
-  #signalChannel = null; // RTCDataChannel for _signal
-  #pendingRejects = new Map(); // label -> reject function
-  #openSockets = new Map(); // label -> RelaySocket (for post-open rejections)
+  #signalChannel = null;
+  // All tracked data channels: { dc, sock?, reject? }
+  // Before open: reject is set. After open: sock is set.
+  // Matched by dc.id (sctp_id) when available, or by dc.label as fallback.
+  #tracked = [];
 
   /**
    * @param {string} url - Gateway origin (e.g. "https://example.com").
@@ -452,22 +454,25 @@ export class Gateway {
     const dc = this.#rtcPc.createDataChannel(target);
     dc.binaryType = "arraybuffer";
 
+    const entry = { dc, sock: null, reject: null };
+    this.#tracked.push(entry);
+
     // Race: channel opens vs server rejects via _signal.
     await new Promise((resolve, reject) => {
-      this.#pendingRejects.set(target, reject);
+      entry.reject = reject;
       dc.onopen = resolve;
       dc.onerror = (e) => {
-        this.#pendingRejects.delete(target);
+        this.#removeTracked(entry);
         reject(new Error(`data channel error: ${e.error?.message || e}`));
       };
     });
 
-    // Channel is open, but rejection may still arrive.
-    this.#pendingRejects.delete(target);
+    // Channel is open (dc.id now available), but rejection/close may still arrive.
+    entry.reject = null;
     const sock = RelaySocket.fromDataChannel(dc);
-    this.#openSockets.set(target, sock);
+    entry.sock = sock;
     dc.onclose = () => {
-      this.#openSockets.delete(target);
+      this.#removeTracked(entry);
       sock._notifyClose();
     };
     return sock;
@@ -536,6 +541,17 @@ export class Gateway {
     });
   }
 
+  #findTracked(sctpId, label) {
+    // Match by sctp_id first (exact), fall back to label (first match).
+    return this.#tracked.find(e => e.dc.id != null && e.dc.id === sctpId)
+      || this.#tracked.find(e => e.dc.label === label);
+  }
+
+  #removeTracked(entry) {
+    const i = this.#tracked.indexOf(entry);
+    if (i !== -1) this.#tracked.splice(i, 1);
+  }
+
   #handleSignalMessage(data) {
     try {
       const msg = JSON.parse(data);
@@ -547,21 +563,30 @@ export class Gateway {
           this.#onEvent?.({ type: "rtc-pong", ts: msg.ts });
           break;
         case "rejected": {
-          // If still waiting to open, reject the promise.
-          const reject = this.#pendingRejects.get(msg.channel);
-          if (reject) {
-            this.#pendingRejects.delete(msg.channel);
-            reject(new Error(`rejected: ${msg.reason}`));
-          }
-          // If already open, close it from our side.
-          const sock = this.#openSockets.get(msg.channel);
-          if (sock) {
-            this.#openSockets.delete(msg.channel);
-            sock._error = msg.reason;
-            sock.close();
-            sock._notifyClose();
+          const entry = this.#findTracked(msg.sctp_id, msg.channel);
+          if (entry) {
+            this.#removeTracked(entry);
+            if (entry.reject) {
+              entry.reject(new Error(`rejected: ${msg.reason}`));
+            } else if (entry.sock) {
+              entry.sock._error = msg.reason;
+              entry.sock.close();
+              entry.sock._notifyClose();
+            }
           }
           this.#onEvent?.({ type: "rtc-rejected", channel: msg.channel, reason: msg.reason });
+          break;
+        }
+        case "closed": {
+          const entry = this.#findTracked(msg.sctp_id, msg.channel);
+          if (entry) {
+            this.#removeTracked(entry);
+            if (entry.sock) {
+              entry.sock.close();
+              entry.sock._notifyClose();
+            }
+          }
+          this.#onEvent?.({ type: "rtc-closed", channel: msg.channel });
           break;
         }
         case "error":
