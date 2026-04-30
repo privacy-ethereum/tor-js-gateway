@@ -1,6 +1,6 @@
 # tor-js-gateway
 
-Gateway server for [tor-js](https://github.com/voltrevo/tor-js) — enabling real Tor circuits built locally in the browser using WebAssembly. All cryptography runs on the client. The gateway never sees your traffic or knows your destination — it just relays encrypted bytes to Tor relays.
+Gateway server for [tor-js](https://www.npmjs.com/package/tor-js) — enabling real Tor circuits built locally in the browser using WebAssembly. All cryptography runs on the client. The gateway never sees your traffic or knows your destination — it just relays encrypted bytes to Tor relays.
 
 Built with [Arti](https://gitlab.torproject.org/tpo/core/arti), the Rust Tor implementation.
 
