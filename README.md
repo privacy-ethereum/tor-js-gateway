@@ -1,4 +1,4 @@
-# tor-fast-bootstrap — archived
+# tor-js-gateway — archived
 
 This repository is no longer developed. The gateway it held now lives in the
 [tor-js](https://github.com/privacy-ethereum/tor-js) repository:
